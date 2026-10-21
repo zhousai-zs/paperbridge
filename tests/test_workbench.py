@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -66,6 +67,7 @@ def test_noncontiguous_page_review_and_revision_conflicts(client, bundle):
     key = doc_id(client)
     page = client.get(f'/api/documents/{key}/pages/1').json()
     assert '<math' in page['html'] and len(page['evidence']) == 1
+    assert page['source_size'] == {'width': 20, 'height': 20}
     assert client.get(f'/api/documents/{key}/pages/2').status_code == 404
     edit = {'markdown': '# Human correction\n\n![](chunks/0000/images/fig.png)', 'version': page['version']}
     saved = client.post(f'/api/documents/{key}/pages/1', json=edit)
@@ -149,6 +151,31 @@ def test_export_refuses_directory_escape(bundle, tmp_path):
 def test_revision_rejects_page_marker_injection(bundle):
     with pytest.raises(ValueError, match='source_page'):
         save_revision(bundle, 1, '<!-- source_page: 9 -->\nInjected', '')
+
+
+@pytest.mark.parametrize('requested', [False, True])
+def test_open_folder_returns_action_result_without_server_error(client, bundle, monkeypatch, requested):
+    monkeypatch.setattr('paperbridge.workbench.request_open_folder', lambda root: requested)
+    response = client.post(f'/api/documents/{doc_id(client)}/open')
+    assert response.status_code == 200
+    assert response.json()['requested'] is requested
+    assert response.json()['path'] == str(bundle)
+    if not requested:
+        assert '复制路径' in response.json()['message']
+
+
+def test_explorer_permission_denial_is_handled_without_shell_execution(bundle, monkeypatch):
+    from types import SimpleNamespace
+    from paperbridge.workbench import request_open_folder
+    calls = []
+    monkeypatch.setattr('paperbridge.workbench.os', SimpleNamespace(name='nt', environ={'WINDIR': r'C:\Windows'}))
+    def denied(command, **kwargs):
+        calls.append((command, kwargs))
+        raise PermissionError(5, 'Access is denied')
+    monkeypatch.setattr('paperbridge.workbench.subprocess.Popen', denied)
+    assert request_open_folder(bundle) is False
+    assert calls[0][0] == [str(Path(r'C:\Windows') / 'explorer.exe'), str(bundle)]
+    assert not calls[0][1].get('shell', False)
 
 
 @pytest.mark.parametrize('lock_owner', [2222, 3333])

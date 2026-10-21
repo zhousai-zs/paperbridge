@@ -64,7 +64,8 @@ def check():
                 with urlopen(request, timeout=5) as response:
                     state = json.load(response)
                 assert Path(state['output']) == output, state
-                assert state['version'] == '0.2.0', state
+                from paperbridge import __version__
+                assert state['version'] == __version__, state
                 print('PASS: actual .cmd help and HTTP startup, unrelated working directory, Chinese/spaced output path, argument forwarding')
             finally:
                 subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],

@@ -1,0 +1,35 @@
+.reader-scroll{flex:1;min-height:0;overflow:auto;background:#edf0e9;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable}
+.reading-labels{display:grid;grid-template-columns:1fr 1fr;flex-shrink:0;background:#fff;border-bottom:1px solid var(--line)}
+.reading-labels>strong{padding:13px 24px;font-size:11px;font-weight:500}
+.reading-labels>strong+strong{border-left:1px solid var(--line)}
+.reading-labels small{font-size:10px;color:var(--muted);font-weight:400;margin-left:12px}
+#reading-pages{padding:0 18px}
+.flow-page{border:1px solid #d9e2d2;border-radius:6px;overflow:hidden;margin:0 0 20px;background:white}
+.flow-page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 18px;background:#f7f9f3;border-bottom:1px solid var(--line);font-size:11px;color:#78876e}
+.flow-page-heading button{flex-shrink:0}
+.flow-page-columns{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+.flow-source{padding:18px;background:#e9ece5;border-right:1px solid var(--line);min-width:0}
+.flow-source img{display:block;width:100%;height:auto;box-shadow:0 2px 8px #203a331a;background:white}
+.flow-result{min-width:0;background:#fff}
+.flow-result .markdown{overflow:visible;flex:none;padding:27px 32px;font-size:15px;line-height:1.9;max-width:100%}
+.flow-result .markdown h1{font-size:25px}.flow-result .markdown h2{font-size:21px}
+.flow-evidence{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 22px;border-top:1px solid var(--line)}
+.flow-evidence>span{font-size:10px;color:var(--muted);margin-right:5px}
+.flow-evidence>a{display:flex;gap:5px;align-items:center;padding:4px 7px;border:1px solid var(--line);border-radius:4px;text-decoration:none}
+.flow-evidence img{height:36px;max-width:130px;object-fit:contain}.flow-evidence>a>span{font-size:10px;white-space:nowrap}
+.flow-sentinel{min-height:44px;display:flex;justify-content:center;align-items:center;gap:12px;font-size:11px;color:#829176;padding:12px;text-align:center}
+#reader.text-only .flow-page-columns,#reader.text-only .reading-labels{grid-template-columns:1fr}
+#reader.text-only .flow-source,#reader.text-only .reading-labels>strong:first-child{display:none}
+#reader.text-only .reading-labels>strong+strong{border-left:0}
+#reader.text-only .flow-result .markdown{max-width:860px;margin:0 auto;padding:32px 38px;font-size:16px;line-height:2}
+#reader.text-only .flow-evidence{max-width:860px;margin:0 auto}
+.folder-fallback{display:flex;align-items:center;gap:10px;padding:10px 24px;font-size:11px;background:#fbf1df;border-bottom:1px solid #e9d7b1;flex-shrink:0}
+.folder-fallback input{flex:1;min-width:0;border:1px solid #d9d1bf;background:#fff;padding:6px 9px;border-radius:4px;color:var(--text);font-size:11px}
+#revision-dialog{width:90vw;max-width:960px;height:85vh;max-height:900px;background:#fff}
+#revision-dialog .reader-header{padding:18px 22px}
+.revision-toolbar{display:flex;align-items:center;gap:16px;justify-content:space-between;flex-shrink:0;height:48px;padding:0 22px;border-bottom:1px solid var(--line);background:#f8faf5}
+.revision-toolbar .reader-tabs{flex-shrink:0}
+#revision-dialog #markdown-editor{font-size:14px;line-height:1.9;padding:24px 28px}
+#revision-preview{padding:24px 28px;min-height:0}
+@media(max-width:1150px){#reading-progress{display:none}.flow-result .markdown{padding:21px;font-size:14px}.flow-source{padding:12px}.reading-labels small{display:none}}
+@media(max-width:800px){#reader .reader-toolbar{gap:8px;flex-wrap:wrap}#reader .reader-toolbar .page-nav{margin-right:auto}.reading-labels{display:none}#reading-pages{padding:0 10px}.flow-page-columns{grid-template-columns:1fr}.flow-source{border-right:0;border-bottom:1px solid var(--line);padding:12px}.flow-page-heading{font-size:10px;padding:10px 12px}.flow-result .markdown,#reader.text-only .flow-result .markdown{padding:23px 20px;font-size:15px;line-height:1.95}.flow-sentinel{font-size:10px;min-height:36px}.folder-fallback{padding:9px 12px;flex-wrap:wrap}.folder-fallback>span{width:100%}.folder-fallback input{font-size:10px}#revision-dialog{width:96vw;height:91vh}#revision-dialog .reader-header{padding:12px}.revision-toolbar{padding:0 12px}.revision-toolbar .subtle{font-size:10px}#revision-dialog #markdown-editor{padding:18px;font-size:13px}.flow-evidence{padding:10px 15px}.flow-evidence img{max-width:100px}}

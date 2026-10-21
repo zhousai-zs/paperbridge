@@ -31,6 +31,19 @@ STATIC = Path(__file__).with_name('web')
 MAX_UPLOAD = 200 * 1024 * 1024
 
 
+def request_open_folder(root):
+    """Request Explorer directly; a denied desktop action must not become an API error."""
+    if os.name != 'nt':
+        return False
+    explorer = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'explorer.exe'
+    try:
+        subprocess.Popen([str(explorer), str(root)], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, close_fds=True)
+    except OSError:
+        return False
+    return True
+
+
 def friendly_error(message):
     if 'Encrypted PDF' in message:
         return 'PDF 已加密，请先提供未加密的副本。'
@@ -341,10 +354,18 @@ def create_app(output=None, state=None, start_worker=True):
         base = f'/files/{doc_id}/'
         evidence_file = root / 'evidence.json'
         evidence = json.loads(evidence_file.read_text(encoding='utf-8')) if evidence_file.exists() else []
+        source_size = None
+        try:
+            from PIL import Image
+            with Image.open(root / 'pages' / f'page-{page:04}.png') as image:
+                source_size = {'width': image.width, 'height': image.height}
+        except OSError:
+            pass
         return {'page': page, 'markdown': text, 'html': render_markdown(text, base),
                 'original': original, 'revised': bool(revision), 'version': revision_version(root),
                 'revision_stale': bool(revision and revision.get('original_sha256') != hashlib.sha256(original.encode()).hexdigest()),
                 'source': base + f'pages/page-{page:04}.png',
+                'source_size': source_size,
                 'evidence': [{**e, 'url': base + quote(e['image'])} for e in evidence if e['page'] == page],
                 'issues': [i for i in item['issues'] if i.get('page') in (page, None)]}
 
@@ -392,11 +413,9 @@ def create_app(output=None, state=None, start_worker=True):
     @app.post('/api/documents/{doc_id}/open')
     def open_folder(doc_id: str):
         root, _ = document(doc_id)
-        if os.name == 'nt':
-            os.startfile(root)
-        else:
-            raise HTTPException(400, '请使用结果路径在文件管理器中打开。')
-        return {'ok': True}
+        requested = request_open_folder(root)
+        return {'requested': requested, 'path': str(root),
+                'message': '已请求资源管理器打开文件夹。' if requested else '系统未允许自动打开文件夹，可复制路径手动打开。'}
 
     @app.get('/files/{doc_id}/{relative:path}')
     def file(doc_id: str, relative: str):

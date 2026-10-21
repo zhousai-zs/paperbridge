@@ -19,7 +19,7 @@ def seed():
     (root / 'pages').mkdir(parents=True)
     (root / 'evidence').mkdir()
     pdf = canvas.Canvas(str(root / 'source.pdf'))
-    for page in range(1, 4):
+    for page in range(1, 9):
         pdf.setFont('Helvetica', 18)
         pdf.drawString(45, 760, 'PaperBridge sample document')
         pdf.setFont('Helvetica', 12)
@@ -35,12 +35,17 @@ def seed():
         image.save(root / 'pages' / f'page-{page:04}.png')
     pdf.save()
     Image.new('RGB', (300, 50), 'white').save(root / 'evidence' / 'equation.png')
-    (root / 'document.md').write_text('# Sample\n\n<!-- source_page: 1 -->\n\n'
+    markdown = '# Sample\n\n<!-- source_page: 1 -->\n\n'
+    markdown += (
         '# 从论文到可核对的阅读材料\n\n这是一份用于程序验收的生成样本。\n\n'
         '$$E=mc^2$$\n\n| 指标 | 数值 |\n| --- | --- |\n| A | 12 |\n| B | 24 |\n\n'
-        '<!-- source_page: 3 -->\n\n## 第三页\n\n检查非连续页码和公式原图。\n', encoding='utf-8')
+        '<!-- source_page: 3 -->\n\n## 第三页\n\n检查非连续页码和公式原图。\n')
+    for page in (4, 6, 8):
+        markdown += f'\n\n<!-- source_page: {page} -->\n\n## 原文第 {page} 页\n\n'
+        markdown += ('这是一段连续阅读验收正文，用来检查滚动位置、自动接续和原文对照。\n\n' * 10)
+    (root / 'document.md').write_text(markdown, encoding='utf-8')
     (root / 'report.json').write_text(json.dumps({'status': 'needs_review', 'source_name': '示例论文 · 公式与表格.pdf',
-        'selected_pages': [1, 3], 'config': {'tier': 'standard'},
+        'selected_pages': [1, 3, 4, 6, 8], 'config': {'tier': 'standard'},
         'issues': [{'page': 3, 'code': 'formula_image_only'}]}, ensure_ascii=False), encoding='utf-8')
     (root / 'evidence.json').write_text(json.dumps([{'page': 1, 'type': 'equation', 'image': 'evidence/equation.png'}]), encoding='utf-8')
     (root / 'AGENT_README.md').write_text('先读 document.md，再核对 pages/。', encoding='utf-8')

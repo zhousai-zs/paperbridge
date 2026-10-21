@@ -11,5 +11,6 @@ os.chdir(root)
 build_wheel(str(destination))
 wheel = max(destination.glob('paperbridge-*.whl'), key=lambda p: p.stat().st_mtime)
 with zipfile.ZipFile(wheel) as archive:
-    assert {'paperbridge/web/index.html', 'paperbridge/web/app.css', 'paperbridge/web/app.js'} <= set(archive.namelist())
+    assert {'paperbridge/web/index.html', 'paperbridge/web/app.css', 'paperbridge/web/reader.css',
+            'paperbridge/web/app.js'} <= set(archive.namelist())
 print('PASS: wheel includes offline web assets')

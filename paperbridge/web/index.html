@@ -6,6 +6,7 @@
   <meta name="paperbridge-token" content="__API_TOKEN__">
   <title>PaperBridge · 论文工作台</title>
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/reader.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -49,15 +50,23 @@
   </main>
 
   <dialog id="reader" aria-labelledby="reader-title">
-    <div class="reader-header"><div class="reader-heading"><span class="eyebrow">02 / 对照与修订</span><h2 id="reader-title"></h2></div><button id="open-folder" class="secondary">打开文件夹</button><button id="export-button" class="primary">导出阅读包 ↗</button><button id="close-reader" class="icon-button" aria-label="关闭阅读器">×</button></div>
-    <div class="reader-toolbar"><div class="page-nav"><button id="prev-page" class="secondary" aria-label="上一页">←</button><label for="page-select">原文页码</label><select id="page-select"></select><button id="next-page" class="secondary" aria-label="下一页">→</button></div><span id="revision-status" class="subtle"></span><span class="review-reminder">完整性检查通过 ≠ 识别内容全部准确</span></div>
+    <div class="reader-header"><div class="reader-heading"><span class="eyebrow">02 / 连续阅读与修订</span><h2 id="reader-title"></h2></div><button id="copy-path" class="secondary">复制路径</button><button id="open-folder" class="secondary">打开文件夹</button><button id="export-button" class="primary">导出阅读包 ↗</button><button id="close-reader" class="icon-button" aria-label="关闭阅读器">×</button></div>
+    <div id="folder-fallback" class="folder-fallback" hidden><span>可复制此路径，在文件资源管理器中打开：</span><input id="folder-path" readonly aria-label="结果文件夹路径"><button class="secondary small" data-copy-path>复制路径</button></div>
+    <div class="reader-toolbar"><div class="page-nav"><button id="prev-page" class="secondary" aria-label="上一页">←</button><label for="page-select">当前页</label><select id="page-select"></select><button id="next-page" class="secondary" aria-label="下一页">→</button></div><button id="toggle-source" class="secondary small" aria-pressed="true">隐藏原文</button><button id="edit-page" class="secondary small">修订当前页</button><span id="reading-progress" class="subtle"></span><span class="review-reminder">下滑自动接续下一页</span></div>
     <div id="page-issues" class="page-issues" hidden></div>
-    <div class="reader-columns">
-      <section class="source-pane"><div class="pane-heading"><strong>原始页面</strong><a id="source-link" target="_blank" rel="noopener">打开大图 ↗</a></div><div class="source-scroll"><img id="source-image" alt="论文原始页面"></div></section>
-      <section class="result-pane"><div class="pane-heading"><div class="reader-tabs" role="tablist" aria-label="结果显示方式"><button id="preview-tab" class="active" role="tab" aria-selected="true">阅读预览</button><button id="edit-tab" role="tab" aria-selected="false">编辑 Markdown</button></div><button id="save-revision" class="primary small" disabled>保存本页修订</button></div><article id="markdown-preview" class="markdown"></article><textarea id="markdown-editor" aria-label="当前页 Markdown 修订" spellcheck="false" hidden></textarea></section>
+    <div class="reading-labels"><strong>原始页面</strong><strong>阅读正文 <small>公式、数字与表格可随时核对原图</small></strong></div>
+    <div id="reader-scroll" class="reader-scroll" tabindex="0" aria-label="论文连续阅读区域">
+      <div id="reader-before" class="flow-sentinel" aria-live="polite"></div>
+      <div id="reading-pages"></div>
+      <div id="reader-after" class="flow-sentinel" aria-live="polite"></div>
     </div>
-    <section id="evidence-section" class="evidence-section"><strong>本页核对裁片</strong><div id="evidence-list"></div></section>
-    <div class="reader-footer"><span>人工修订单独保存，重跑转换不会覆盖。导出时自动合入修订。</span><span>保留整个阅读包，图片引用才能正常打开。</span></div>
+    <div class="reader-footer"><span>连续滚动 · 原文页码保留 · 人工修订单独保存</span><span>完整性检查通过 ≠ 识别内容全部准确</span></div>
+  </dialog>
+  <dialog id="revision-dialog" aria-labelledby="revision-title">
+    <div class="reader-header"><div class="reader-heading"><span class="eyebrow">逐页修订 · 保留原始识别稿</span><h2 id="revision-title"></h2></div><button id="save-revision" class="primary" disabled>保存本页修订</button><button id="close-revision" class="icon-button" aria-label="关闭修订">×</button></div>
+    <div class="revision-toolbar"><div class="reader-tabs" role="tablist" aria-label="修订显示方式"><button id="edit-tab" class="active" role="tab" aria-selected="true">编辑 Markdown</button><button id="preview-tab" role="tab" aria-selected="false">预览修订</button></div><span id="revision-status" class="subtle"></span></div>
+    <textarea id="markdown-editor" aria-label="当前页 Markdown 修订" spellcheck="false"></textarea><article id="revision-preview" class="markdown" hidden></article>
+    <div class="reader-footer"><span>保存后会更新阅读正文，导出时自动合入修订。Ctrl+S 保存。</span></div>
   </dialog>
   <div id="toast" role="status" aria-live="polite" hidden></div>
 </body>
