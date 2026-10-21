@@ -1,0 +1,2 @@
+# cmd.exe launchers must retain Windows line endings on every checkout.
+*.cmd text eol=crlf

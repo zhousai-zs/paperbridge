@@ -29,6 +29,9 @@ jobs:
         run: python -m pytest -q
       - name: Check packaged web assets
         run: python scripts/check_package.py
+      - name: Check the Windows double-click launcher
+        if: runner.os == 'Windows'
+        run: python scripts/check_windows_launcher.py
   browser:
     name: Offline workbench browser checks
     runs-on: ubuntu-latest

@@ -1,10 +1,15 @@
 @echo off
-chcp 65001 >nul
-cd /d "%~dp0"
+setlocal
+pushd "%~dp0"
+if errorlevel 1 exit /b 1
 if not exist ".venv\Scripts\python.exe" (
-  echo 请先运行 setup.ps1 安装环境。
+  echo Please run setup.ps1 first to install PaperBridge.
   pause
+  popd
   exit /b 1
 )
 ".venv\Scripts\python.exe" -m paperbridge.cli ui %*
-if errorlevel 1 pause
+set "paperbridge_exit=%errorlevel%"
+popd
+if not "%paperbridge_exit%"=="0" pause
+exit /b %paperbridge_exit%
