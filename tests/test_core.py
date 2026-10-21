@@ -39,7 +39,15 @@ def test_lock_blocks_concurrent_writer_and_releases(tmp_path):
 
 
 @pytest.fixture
-def pdf(tmp_path):
+def pdf(tmp_path, monkeypatch):
+    # Failure-path tests mock the parser process and do not need the inference engine installed.
+    import importlib.metadata
+    original_version = importlib.metadata.version
+    def version(name):
+        if name == 'mineru':
+            return '4.0.12'
+        return original_version(name)
+    monkeypatch.setattr(importlib.metadata, 'version', version)
     path = tmp_path / '中文 sample.pdf'
     c = canvas.Canvas(str(path))
     c.drawString(50, 700, 'An original sentence for testing.')

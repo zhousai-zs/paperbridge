@@ -1,0 +1,10 @@
+name: 体验改进
+description: 提出一个具体使用场景中的改进
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 你想完成什么？
+      description: 描述使用场景、目前的障碍和希望得到的结果。
+    validations:
+      required: true

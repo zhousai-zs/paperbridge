@@ -1,0 +1,20 @@
+name: 问题反馈
+description: 报告安装、转换或复核问题
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 发生了什么？
+      description: 写出操作步骤、预期结果和实际结果。不要上传未获授权的论文或个人信息。
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与版本
+      description: PaperBridge 版本、Windows/Python 版本、转换模式。
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误记录
+      description: 相关 report.json 或 engine.log 的错误部分，可先移除个人路径。

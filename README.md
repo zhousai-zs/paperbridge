@@ -4,7 +4,18 @@
 
 ## 现在就用
 
-首次使用先按下方“安装到 Windows 机器”准备环境与模型。已经安装的机器可以直接双击仓库目录中的 **PDF转Markdown.cmd**，在窗口中选择一份或多份 PDF。转换完成后，在 `outputs/论文名-哈希/` 找到 **document.md**。
+首次使用先按下方“安装到 Windows 机器”准备环境与模型。已经安装的机器直接双击 **论文工作台.cmd**，浏览器会打开本机中文工作台。
+
+1. 拖入或选择一份、多份 PDF，选择标准/快速模式及页码，点击“开始转换”。
+2. 在队列中查看分段进度；失败后可查看运行记录并重试，自动复用完整检查点。
+3. 在文档库打开论文，逐页对照原图、公式与表格裁片；可切换到 Markdown 编辑，保存本页修订。
+4. 点击“导出阅读包”，将 ZIP 解压后的整个目录交给 Agent。阅读包已合入保存的修订，并保留原始识别稿。
+
+工作台只监听 `127.0.0.1`，不上传论文，不使用外部脚本、字体或公式服务。运行时保留启动窗口；关闭工作台服务会中断当前任务，重新打开后可重试。关闭浏览器标签不会停止转换。默认地址为 `http://127.0.0.1:8765`，端口占用时可运行 `论文工作台.cmd --port 8766`。
+
+人工修订存放在结果目录的 `review/`，每次覆盖保存前都会留存历史。转换重跑不会覆盖修订；若识别稿发生变化，阅读器会提示重新核对。导出包中的 `document.md` 合入修订，`original-document.md` 为原始识别稿，`START_HERE.md` 为交接入口。导出会校验 Markdown 图片引用；缺图时先修订再导出。导出包省略运行日志和断点文件，不用于续跑。
+
+原有 **PDF转Markdown.cmd** 和命令行继续可用。转换完成后，可在 `outputs/论文名-哈希/` 找到 **document.md**。
 
 把整个结果文件夹交给 agent，告诉它：**先读 AGENT_README.md，再读 document.md；关键公式和表格请结合对应原图核对。**
 
@@ -32,6 +43,9 @@
 
 # 检查环境与模型
 .\.venv\Scripts\paperbridge.exe doctor --models
+
+# 启动本地工作台；可用 -o 指定另一份文档库
+.\.venv\Scripts\python.exe -m paperbridge.cli ui
 ```
 
 `--tier` 支持 basic、standard、advanced。已实测 basic 和 standard；advanced 接口可用但本项目未做质量验证，不作为推荐默认值。
@@ -53,6 +67,7 @@
 | chunks/ | 引擎原始输出、素材、日志、带哈希的检查点 |
 | report.json | 页面覆盖、图片引用、状态、模式和运行时间；`accuracy_verified` 默认为 false |
 | history/ | 重跑前的报告，避免缓存运行时间覆盖首次记录 |
+| review/ | 工作台人工修订及修订历史，独立于原始识别稿保存 |
 
 Markdown 图片文件在 `chunks/0000/images/` 等目录中。**移动或分享时保留整个结果文件夹**。合并单元格表格可能使用内嵌 HTML，这是为了保留结构。
 
@@ -83,6 +98,8 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Python "C:\Python312\pytho
 
 脚本创建独立环境、安装 `requirements.lock.txt` 中的实测版本，并从 MinerU 官方支持的 ModelScope 源下载模型。模型和临时文件放在项目 `.cache/`，可用 `PAPERBRIDGE_CACHE` 指定另一磁盘。项目缓存是数 GB 级，预留 6 GB 以上空间更合适。锁文件面向本次 Windows/Python 环境；其他系统需另做安装验证。
 
+从旧版本更新后再次运行安装脚本即可更新包元数据与工作台依赖。已安装的模型可以复用。工作台任务记录和上传副本位于 `.cache/workbench/`，按输出目录隔离。手动清理这里的上传文件后，旧任务不能直接重试，需要重新添加原始 PDF。
+
 如需手动下载或验证：
 
 ```powershell
@@ -108,3 +125,11 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Python "C:\Python312\pytho
 ```
 
 评估脚本是透明的小规模核对，不是官方 OmniDocBench 全量评测，也不把字符串相似度称为公式语义准确率。
+
+## GitHub 协作与自动检查
+
+需求和问题通过 Issue 记录；每次改动在 `codex/` 分支上开发，通过 PR 检查后合入 `main`。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+GitHub Actions 分别执行 Windows/Linux Python 3.12 程序测试，以及离线浏览器流程测试；它们不下载模型，不证明真实论文识别质量。涉及引擎、分段或文档组装的修改仍需按上面的真实论文流程回归，并记录结果。
+
+本地浏览器检查需要 Node 和 Playwright：`node scripts/check_workbench.cjs`；设置 `PAPERBRIDGE_PYTHON` 可指定 Python 路径。该脚本使用 `.cache/ui-checks/` 中的独立测试文档，不修改日常文档库。源码归档使用 `scripts/package_source.py`。

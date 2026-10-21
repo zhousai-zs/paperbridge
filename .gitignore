@@ -15,3 +15,5 @@ research/evaluation-console.txt
 research/*.png
 dist/
 build/
+node_modules/
+playwright-report/

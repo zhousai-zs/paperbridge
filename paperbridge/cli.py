@@ -20,12 +20,20 @@ def main(argv=None):
     conv.add_argument("--timeout", type=float, default=1800)
     conv.add_argument("--recursive", action="store_true")
     conv.add_argument("--offline", action="store_true", help="Require local models; never download them")
+    conv.add_argument("--progress-json", action="store_true", help=argparse.SUPPRESS)
+    ui = commands.add_parser("ui", help="Open the local Chinese workbench")
+    ui.add_argument("--port", type=int, default=8765)
+    ui.add_argument("--no-browser", action="store_true")
+    ui.add_argument("-o", "--output", default=str(ROOT / "outputs"))
     doctor = commands.add_parser("doctor", help="Inspect runtime/model readiness")
     doctor.add_argument("--models", action="store_true")
     args = parser.parse_args(argv)
     if getattr(args,'offline',False):
         os.environ['MINERU_MODEL_SOURCE']='local'
     configure()
+    if args.command == "ui":
+        from .workbench import serve
+        return serve(args.output, args.port, not args.no_browser)
     if args.command == "doctor":
         import importlib.metadata
         print(json.dumps({"python": sys.version, "executable": sys.executable,
@@ -55,6 +63,8 @@ def main(argv=None):
             target, report = convert(
                 source, args.output, tier=args.tier, pages=args.pages, chunk_size=args.chunk_size,
                 timeout=args.timeout, ocr=args.ocr,
+                on_event=(lambda event: print('PAPERBRIDGE_EVENT ' + json.dumps(event), flush=True))
+                if args.progress_json else None,
             )
             print(f"{report['status']}: {target / 'document.md'}", flush=True)
             review += report["status"] == "needs_review"

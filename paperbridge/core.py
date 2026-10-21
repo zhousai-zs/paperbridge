@@ -154,7 +154,7 @@ def save_evidence(source, pages, root):
 
 
 def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
-            timeout=1800, ocr="auto", progress=print):
+            timeout=1800, ocr="auto", progress=print, on_event=None):
     configure()
     if tier not in {'basic', 'standard', 'advanced'} or ocr not in {'auto', 'txt', 'ocr'}:
         raise ValueError('Unsupported tier or OCR mode')
@@ -175,10 +175,10 @@ def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
     root = Path(output).expanduser().resolve() / f"{stem}-{job_hash}"
     root.mkdir(parents=True, exist_ok=True)
     with job_lock(root):
-        return _convert_locked(source, root, config, count, selected, timeout, progress)
+        return _convert_locked(source, root, config, count, selected, timeout, progress, on_event)
 
 
-def _convert_locked(source, root, config, count, selected, timeout, progress):
+def _convert_locked(source, root, config, count, selected, timeout, progress, on_event=None):
     start = time.monotonic()
     report = {
         "schema_version": 1, "status": "running", "config": config,
@@ -196,12 +196,24 @@ def _convert_locked(source, root, config, count, selected, timeout, progress):
     snapshot = root / "source.pdf"
     write_json(root / "manifest.json", config)
     chunks = [selected[i:i + config["chunk_size"]] for i in range(0, len(selected), config["chunk_size"])]
+    def notify(stage, **extra):
+        report.update(stage=stage, **extra)
+        write_json(root / "report.json", report)
+        if on_event:
+            on_event({"stage": stage, "output": str(root),
+                      "owner_pid": os.getpid(),
+                      "total_pages": len(selected), "completed_pages": report.get("completed_pages", 0),
+                      **extra})
+
     try:
+        notify("preparing", completed_pages=0)
         if not snapshot.exists():
             shutil.copyfile(source, snapshot)
         if digest_file(snapshot) != config['source_sha256']:
             raise RuntimeError(f'Source changed during conversion or snapshot was modified: {snapshot}')
         for number, indices in enumerate(chunks):
+            notify("parsing", current_pages=[i + 1 for i in indices],
+                   chunk=number + 1, total_chunks=len(chunks))
             chunk = root / "chunks" / f"{number:04}"
             chunk.mkdir(parents=True, exist_ok=True)
             page_spec = ",".join(str(i + 1) for i in indices)
@@ -218,10 +230,13 @@ def _convert_locked(source, root, config, count, selected, timeout, progress):
                 if not (chunk / "DONE").is_file():
                     raise RuntimeError(f"Parser produced no completion marker: {chunk}")
             report["chunks"].append({"index": number, "pages": indices, "cached": cached})
-            write_json(root / "report.json", report)
+            notify("parsing", completed_pages=sum(len(c['pages']) for c in report['chunks']))
+        notify("assembling")
         assemble(root, selected, report)
+        notify("rendering")
         render_pages(snapshot, selected, root / "pages")
         report["status"] = "needs_review" if report["issues"] else "complete"
+        notify("finished", status=report["status"])
     except (Exception, KeyboardInterrupt) as exc:
         report["status"] = "failed"
         report["issues"].append({"code": "conversion_failed", "detail": str(exc) or type(exc).__name__})
