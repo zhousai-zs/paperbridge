@@ -8,7 +8,7 @@ if not exist ".venv\Scripts\python.exe" (
   popd
   exit /b 1
 )
-".venv\Scripts\python.exe" -m paperbridge.cli ui %*
+".venv\Scripts\python.exe" -X utf8 -m paperbridge.cli ui %*
 set "paperbridge_exit=%errorlevel%"
 popd
 if not "%paperbridge_exit%"=="0" pause
