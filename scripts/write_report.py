@@ -1,0 +1,95 @@
+from pathlib import Path
+import json
+
+ROOT=Path(__file__).resolve().parents[1]
+data=json.loads((ROOT/'outputs/standard/evaluation.json').read_text(encoding='utf-8'))
+integrity=json.loads((ROOT/'outputs/standard/integrity-checks.json').read_text(encoding='utf-8'))
+labels={'zh_single':'中文单栏，含中文文字公式','zh_mixed_layout':'中文双栏正文 + 跨栏表格','zh_math':'中文双栏公式 + 密集数值表','bilingual_table':'中英混合合并单元格表格','en_single_math':'英文单栏公式','en_double_math':'英文双栏矩阵及多行公式','en_mixed_figure':'英文复杂版面和多子图'}
+def pct(x):
+    return '-' if x is None else f'{x*100:.2f}%'
+rows=[]
+for score in data['annotated_pages']:
+    rows.append('| '+ ' | '.join([labels[score['id']],pct(score['text_anchor_recall']),pct(score['reading_order_pair_accuracy']),pct(score['formula_region_recall_at_80pct_coverage']),pct(score['table_numeric_token_recall'])])+' |')
+timings=[]
+for job in sorted((ROOT/'outputs/standard').iterdir()):
+    if not job.is_dir(): continue
+    runs=[job/'report.json',*list((job/'history').glob('*.json'))]
+    successful=[]
+    for p in runs:
+        r=json.loads(p.read_text(encoding='utf-8'))
+        if r['status']=='complete' and r['chunks'] and all(not c['cached'] for c in r['chunks']):
+            successful.append(r)
+    if successful:
+        r=successful[0]
+        timings.append((r['source_name'],r['elapsed_seconds']))
+text='''# PaperBridge 测试报告
+
+日期：2026-10-21。环境：Windows，Python 3.12.14，MinerU 4.0.12，DocVortex 0.5.16。
+本机 ONNX 小模型与 llama.cpp VLM；不使用外部推理 API。安装版本见 requirements.lock.txt。
+
+## 结论
+
+Standard 模式完成 **13 份 PDF、44 页**：两篇完整英文论文 33 页，7 页人工标注的真实中英文扫描论文，4 份自建单双栏回归样本。全部通过本次机械完整性检查，输出 38 个公式/表格原图裁片。
+
+可以用来批量建立 agent 阅读材料。这个结论限于本次样本，不等于任何论文均无误差，也不等于每个数学符号已通过人工认证。
+
+## 实际完成的检查
+
+- 所有请求页面存在且顺序正确，没有重复页；源 PDF 快照与每页图均可打开。
+- Markdown 图片引用、结构 JSON 素材路径、所有公式/表格裁片均存在且可解码。
+- 4 个可控模板：英文/中文 × 单栏/双栏；72 个文字顺序标记全部存在且依次排列，简单公式 E=mc²、矢量图和表格均保留。
+- 7 个带标注页面的有效唯一文字锚点相对顺序全部正确；正文锚点召回见下表。
+- 25 个人工标注行间公式区域均被预测公式框覆盖至少 80%；多行公式合并导致输出公式块数与标注条目数不同，不按数量差断言遗漏。
+- 11 项程序测试通过，覆盖页码边界、加密/损坏输入、图片路径、并发锁、失败报告、超时报告、缓存损坏、评估规范化。
+- 实际额外运行：非连续第 1、3 页各分段转换；复跑两个检查点均命中缓存；真实极短超时返回退出码 1 并释放锁。
+- Windows 入口脚本的直接传参转换已实测；文件选择窗口由 Windows 标准组件提供，未进行人工点击测试。
+
+## 人工标注页面核对
+
+| 样本 | 正文锚点召回 | 已匹配锚点顺序 | 公式区域召回 | 表格数字词元召回 |
+| --- | --- | --- | --- | --- |
+'''+ '\n'.join(rows)+'''
+
+指标定义与限制：
+
+1. 正文锚点：每个合格文本块取开头、中间、末尾的 16 字符锚点，去除标点和空白后精确匹配。它不是逐字 OCR 正确率。锚点顺序只比较成功匹配且无歧义的锚点对。
+2. 公式区域：按人工标注框计算与预测公式框的覆盖率，只证明该区域被检测和保留，不证明 LaTeX 转写语义相同。
+3. 表格数字：比较数字词元的多重集合，归一化单元格内数字分组空格。100% 不验证每个数字的行列归属、表头语义或合并单元格结构。
+4. 原始评估 JSON 还保留严格单元格字符串召回和 LaTeX 字符串相似度。合并/拆分单元格、合并多行公式和等价 LaTeX 写法会影响这些指标，不能称为语义准确率。中英表格严格单元格召回为 85.09%，其数值词元召回为 100%；报告保留两者，不隐藏差异。
+
+原始结果在完成复现后生成，不包含在仓库中。evaluation.json（本地生成：`outputs/standard/evaluation.json`）。检查记录：integrity-checks.json（本地生成：`outputs/standard/integrity-checks.json`）。这不是官方 OmniDocBench 全量评测。
+
+## 人工抽查和选型修正
+
+Basic 模式曾把中文文字公式中的“阿里巴巴”和“国家相关行业”识别为错误文字；Standard 模式输出恢复正确，已对照公式原图检查。Attention 第 4 页的缩放点积注意力公式也检查了 QKᵀ、√dₖ 和末尾 V。
+
+检查了英文单双栏、中文跨栏表格与双栏公式页的页面渲染；检查了中文文字公式独立裁片。没有对 44 页每个字符进行人工逐字校对。图像可定位和原页留存，不等于图内每个文字标签都已转成可搜索文本。
+
+Basic 的原始记录留在 本地 `research/basic-first-run.json`；Standard 作为默认模式。没有把快速档文字公式失败写成已解决的快速档能力，也没有声称其他未安装工具实测不如 MinerU。
+
+## 本机运行时间
+
+下面是完整推理运行记录，不采用后续缓存重跑的耗时。速度受硬件、公式密度、模型预热和页面内容影响，不是跨设备承诺。
+
+| 文件 | 秒 |
+| --- | --- |
+'''+ '\n'.join(f'| {name} | {seconds:.2f} |' for name,seconds in timings)+'''
+
+## 示例入口
+
+- Attention 完整 Markdown（本地生成：`outputs/standard/attention-7c8f3374235c/document.md`）
+- Raft 完整 Markdown（本地生成：`outputs/standard/raft-5d3f59474ea9/document.md`）
+- 中文文字公式页（本地生成：`outputs/standard/zh_single-4ccb6e10241b/document.md`）
+- 中文双栏与数值表（本地生成：`outputs/standard/zh_math-6204af9e676a/document.md`）
+- 中英混合表格（本地生成：`outputs/standard/bilingual_table-eda952089be7/document.md`）
+
+## 尚未覆盖
+
+极低分辨率扫描、手写数学、竖排古籍、旋转整篇、超长数百页论文、所有出版社特殊字体、复杂跨页合并表格和所有语言没有得到全面验证。当前按页输出，跨页表格不自动合并。无法保证没有识别错误，因此保留源 PDF、每页图和公式/表格裁片供 agent 或人复核。
+
+## 复现与归档
+
+运行 README 中的验证命令。tests/corpus/benchmark_manifest.json 记录 7 页来源、属性、人工标注和图像 SHA-256；下载脚本保留固定样本选择规则。两篇整篇论文的来源见工具调研。生成的扫描 PDF 为测试包装，不是论文原生可搜索 PDF；4 份回归 PDF 为自建样本，不冒充真实论文。
+'''
+(ROOT/'research/测试报告.md').write_text(text,encoding='utf-8')
+print('Wrote research/测试报告.md')

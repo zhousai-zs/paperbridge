@@ -1,0 +1,17 @@
+.venv/
+.cache/
+outputs/
+tests/corpus/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+*.log
+*.zip
+.env
+.env.*
+!.env.example
+research/*first-run.json
+research/evaluation-console.txt
+research/*.png
+dist/
+build/
