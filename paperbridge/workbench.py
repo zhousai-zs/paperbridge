@@ -294,7 +294,6 @@ def create_app(output=None, state=None, start_worker=True):
         name = (file.filename or 'paper.pdf').replace('\\', '/').rsplit('/', 1)[-1]
         if not name.lower().endswith('.pdf') or len(name) > 180:
             raise HTTPException(400, '请添加 PDF 文件，文件名应少于 180 个字符。')
-        import re
         name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name).strip(' .')
         if name.split('.')[0].upper() in {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}:
             name = '_' + name

@@ -1,0 +1,16 @@
+# Model-free program and browser checks. Versions match the Windows runtime lock.
+setuptools==84.2.0
+pytest==9.1.1
+reportlab==5.0.1
+pypdf==6.21.1
+pillow==12.3.0
+pypdfium2==5.14.0
+fastapi==0.153.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+markdown-it-py==4.2.0
+nh3==0.3.7
+latex2mathml==3.81.1
+httpx==0.28.1
+beautifulsoup4==4.15.0
+pylatexenc==2.11

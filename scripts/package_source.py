@@ -4,7 +4,7 @@ import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
 target=ROOT/'paperbridge-source.zip'
-files=[ROOT/x for x in ('README.md','CHANGELOG.md','pyproject.toml','requirements.lock.txt','setup.ps1','convert.ps1','.gitignore')]
+files=[ROOT/x for x in ('README.md','CHANGELOG.md','pyproject.toml','requirements.lock.txt','requirements-test.txt','setup.ps1','convert.ps1','.gitignore')]
 for folder in ('paperbridge','tests','scripts'):
     files.extend((ROOT/folder).glob('*.py'))
 files.extend((ROOT/'research').glob('*.md'))

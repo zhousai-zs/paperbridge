@@ -149,3 +149,25 @@ def test_export_refuses_directory_escape(bundle, tmp_path):
 def test_revision_rejects_page_marker_injection(bundle):
     with pytest.raises(ValueError, match='source_page'):
         save_revision(bundle, 1, '<!-- source_page: 9 -->\nInjected', '')
+
+
+@pytest.mark.parametrize('lock_owner', [2222, 3333])
+def test_shutdown_stops_actual_cli_pid_and_only_releases_owned_lock(tmp_path, monkeypatch, lock_owner):
+    from types import SimpleNamespace
+    from paperbridge.workbench import TaskQueue
+    tasks = TaskQueue(tmp_path / 'outputs', tmp_path / 'state', start_worker=False)
+    result = tasks.output / 'result'
+    result.mkdir()
+    lock = result / '.lock'
+    lock.write_text(str(lock_owner))
+    job = tasks.add(tmp_path / 'paper.pdf', 'paper.pdf', 'standard', 'all')
+    tasks.jobs[0].update(status='running', output=str(result), owner_pid=2222)
+    tasks.process = SimpleNamespace(pid=1111, poll=lambda: None, wait=lambda timeout: 0)
+    commands = []
+    monkeypatch.setattr('paperbridge.workbench.os', SimpleNamespace(name='nt'))
+    monkeypatch.setattr('paperbridge.workbench.subprocess.run',
+                        lambda command, **kwargs: commands.append(command) or SimpleNamespace(returncode=0))
+    tasks.close()
+    assert commands == [['taskkill', '/PID', '2222', '/T', '/F']]
+    assert lock.exists() == (lock_owner != 2222)
+    assert tasks.jobs[0]['status'] == 'failed'

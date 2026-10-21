@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "reportlab>=4", "httpx>=0.27"]
+test = ["pytest>=8", "reportlab>=4", "httpx>=0.27", "beautifulsoup4>=4.12", "pylatexenc>=2.10"]
 
 [project.scripts]
 paperbridge = "paperbridge.cli:main"

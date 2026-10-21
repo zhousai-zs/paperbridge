@@ -130,6 +130,8 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Python "C:\Python312\pytho
 
 需求和问题通过 Issue 记录；每次改动在 `codex/` 分支上开发，通过 PR 检查后合入 `main`。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
+本次工作台的验证范围与真实模型检查结果见 [工作台验收](research/工作台验收.md)。
+
 GitHub Actions 分别执行 Windows/Linux Python 3.12 程序测试，以及离线浏览器流程测试；它们不下载模型，不证明真实论文识别质量。涉及引擎、分段或文档组装的修改仍需按上面的真实论文流程回归，并记录结果。
 
 本地浏览器检查需要 Node 和 Playwright：`node scripts/check_workbench.cjs`；设置 `PAPERBRIDGE_PYTHON` 可指定 Python 路径。该脚本使用 `.cache/ui-checks/` 中的独立测试文档，不修改日常文档库。源码归档使用 `scripts/package_source.py`。
