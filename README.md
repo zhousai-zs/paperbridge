@@ -4,7 +4,11 @@
 
 ## 现在就用
 
-下载完整 Windows x64 便携包，解压后双击 **PaperBridge.exe**：选择一份或多份 PDF、选择输出文件夹、点击“开始转换”。输出位置会记住上次选择；更多选项默认折叠。
+**[下载 Windows x64 客户端（v0.3.0，约 2.07 GB）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.3.0/PaperBridge-0.3.0-windows-x64.zip)** · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
+
+下载上面的完整便携 ZIP，解压后双击 **PaperBridge.exe**：选择一份或多份 PDF、选择输出文件夹、点击“开始转换”。输出位置会记住上次选择；更多选项默认折叠。
+
+仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.3.0-windows-x64.zip`。
 
 便携包包含 Python 运行环境、标准／快速模式模型，使用时无需安装 Python、联网或 API Key。请保留整个程序文件夹，不能单独移动 EXE。操作与错误处理见 [桌面版使用说明](docs/桌面版使用说明.md)。
 
