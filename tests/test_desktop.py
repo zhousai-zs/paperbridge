@@ -74,7 +74,7 @@ def test_batch_continues_after_failure_and_keeps_review_status(tmp_path, monkeyp
     events = wait_done(runner)
     assert [r['status'] for r in runner.results] == ['failed', 'needs_review', 'complete']
     assert any(e.get('completed_pages') == 2 for e in events)
-    assert len(json.loads((output / 'batch-report.json').read_text())) == 3
+    assert len(json.loads((output / 'batch-report.json').read_text(encoding='utf-8'))) == 3
     assert all(Path(r['log']).is_file() for r in runner.results)
 
 

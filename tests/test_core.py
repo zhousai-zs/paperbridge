@@ -121,5 +121,5 @@ def test_cancel_during_parsing_preserves_lock_cleanup(pdf, tmp_path, monkeypatch
     with pytest.raises(ConversionCancelled):
         convert(pdf, tmp_path / 'out')
     target = next((tmp_path / 'out').iterdir())
-    assert json.loads((target / 'report.json').read_text())['status'] == 'stopped'
+    assert json.loads((target / 'report.json').read_text(encoding='utf-8'))['status'] == 'stopped'
     assert not (target / '.lock').exists()

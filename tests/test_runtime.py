@@ -58,7 +58,7 @@ def test_export_keeps_legacy_revisions_and_assets(tmp_path):
         assert 'Original' in archive.read('original-document.md').decode('utf-8')
         assert 'review/history/old.json' in archive.namelist()
         assert archive.read('pages/p.png') == b'asset'
-    assert 'Original' in (root / 'document.md').read_text()
+    assert 'Original' in (root / 'document.md').read_text(encoding='utf-8')
 
 
 def test_export_rejects_missing_and_escaping_assets(tmp_path):
