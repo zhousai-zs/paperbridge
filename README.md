@@ -4,11 +4,11 @@
 
 ## 现在就用
 
-**[下载 Windows x64 客户端（v0.3.0，约 2.07 GB）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.3.0/PaperBridge-0.3.0-windows-x64.zip)** · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
+**[下载 Windows x64 客户端（v0.3.1，约 2.07 GB）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.3.1/PaperBridge-0.3.1-windows-x64.zip)** · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
 
 下载上面的完整便携 ZIP，解压后双击 **PaperBridge.exe**：选择一份或多份 PDF、选择输出文件夹、点击“开始转换”。输出位置会记住上次选择；更多选项默认折叠。
 
-仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.3.0-windows-x64.zip`。
+仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.3.1-windows-x64.zip`。
 
 便携包包含 Python 运行环境、标准／快速模式模型，使用时无需安装 Python、联网或 API Key。请保留整个程序文件夹，不能单独移动 EXE。操作与错误处理见 [桌面版使用说明](docs/桌面版使用说明.md)。
 
@@ -56,7 +56,7 @@
 
 长论文默认每 20 页保存一个检查点，单段超时 1800 秒，可用 `--chunk-size` 和 `--timeout` 调整。使用完全相同的参数重跑，会校验已完成段的文件哈希并复用。换页码或模式会产生独立结果目录。修改过的缓存会重新解析；不要在生成目录中保存唯一一份手工修改稿。
 
-源码及本地 0.3.1 构建新增：失败、超时或图片校验不通过的分段，默认额外重试一次（`--retries 0` 禁用，最多 5 次额外重试）。完整分段继续复用，失败现场移入结果的 `history/`。图片引用检查同时覆盖 Markdown 和 JSON，并实际解码图片；校验失败不会显示为“完成”。原页图损坏会在重跑时重新生成。上方已发布的 0.3.0 下载包尚不含这些改进。
+0.3.1 新增：失败、超时或图片校验不通过的分段，默认额外重试一次（`--retries 0` 禁用，最多 5 次额外重试）。完整分段继续复用，失败现场移入结果的 `history/`。图片引用检查同时覆盖 Markdown 和 JSON，并实际解码图片；校验失败不会显示为“完成”。原页图损坏会在重跑时重新生成。完整客户端和校验文件已在 [0.3.1 Release](https://github.com/zhousai-zs/paperbridge/releases/tag/v0.3.1) 发布。
 
 检查已有结果无需重新转换，默认只读；可选另存汇总报告：
 
@@ -65,6 +65,8 @@
 ```
 
 新结果的 `report.json` 包含 `stage_seconds`、每段的尝试记录和引擎细分耗时；`integrity.json` 记录最终校验。`engine_log_timing` 中推理耗时来自引擎日志，`progress_seconds_approximate` 来自进度条的整数秒，不能当作高精度计时。识别准确性仍需人工对照。
+
+0.3.1 的构建与验收记录见 [发布验收](research/0.3.1发布验收.md)。
 
 退出码：`0` = 转换和机械检查通过；`2` = 已输出但有明确复核项；`1` = 失败；`130` = 用户停止。目录中的 `batch-report.json` 汇总每份结果。空白页、损坏页或未识别公式等问题不会被当作无问题成功。
 

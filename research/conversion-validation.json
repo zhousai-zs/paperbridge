@@ -100,5 +100,73 @@
     "local_only": true
   },
   "build_source_uncommitted_at_validation": true,
-  "github_release_published": false
+  "github_release_published": true,
+  "release": {
+    "tag": "v0.3.1",
+    "url": "https://github.com/zhousai-zs/paperbridge/releases/tag/v0.3.1",
+    "source_commit": "66d670eb64b23830b35c75b5b9ddb9778bcd2838",
+    "source_dirty": false,
+    "archive_bytes": 2068565935,
+    "archive_sha256": "2de4e24eee8781097f054ab95542c324cdb2c45bbb418a736e6a4f23dd42a150",
+    "zip_crc_passed": true,
+    "documents": [
+      {
+        "name": "fixture_en_1col.pdf",
+        "pages": [
+          1
+        ],
+        "seconds": 38.01,
+        "integrity": {
+          "passed": true,
+          "assets_passed": true,
+          "checked_images": 6,
+          "issues": [],
+          "accuracy_verified": false
+        }
+      },
+      {
+        "name": "fixture_zh_2col.pdf",
+        "pages": [
+          1
+        ],
+        "seconds": 18.16,
+        "integrity": {
+          "passed": true,
+          "assets_passed": true,
+          "checked_images": 6,
+          "issues": [],
+          "accuracy_verified": false
+        }
+      }
+    ],
+    "runs": [
+      {
+        "name": "doctor",
+        "code": 0,
+        "seconds": 8.26
+      },
+      {
+        "name": "convert",
+        "code": 0,
+        "seconds": 57.5
+      },
+      {
+        "name": "verify",
+        "code": 0,
+        "seconds": 0.8
+      },
+      {
+        "name": "cache-reuse",
+        "code": 0,
+        "seconds": 1.42
+      }
+    ],
+    "frozen_gui": {
+      "actual_exe_started": true,
+      "native_window": true,
+      "exit_code": 0,
+      "development_python_paths_removed": true
+    },
+    "clean_machine_verified": false
+  }
 }
