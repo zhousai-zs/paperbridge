@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paperbridge"
-version = "0.1.0"
+version = "0.3.0"
 description = "Local academic PDF to auditable, agent-readable Markdown"
 requires-python = ">=3.12,<3.15"
-dependencies = ["mineru==4.0.12", "pypdfium2==5.14.0"]
+dependencies = ["mineru==4.0.12", "pypdfium2==5.14.0", "pypdf>=6", "pillow>=12"]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "reportlab>=4"]
+build = ["pyinstaller==6.22.0", "pyinstaller-hooks-contrib==2026.9"]
 
 [project.scripts]
 paperbridge = "paperbridge.cli:main"

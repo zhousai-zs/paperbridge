@@ -1,18 +1,18 @@
 """One isolated inference job. Invoked by the CLI with a timeout."""
 import argparse
 from pathlib import Path
-from .environment import configure
+from .environment import prepare_engine
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("pdf")
     p.add_argument("output")
     p.add_argument("--tier", required=True)
     p.add_argument("--pages", required=True)
     p.add_argument("--ocr", default="auto")
-    args = p.parse_args()
-    configure()
+    args = p.parse_args(argv)
+    prepare_engine()
     from mineru.parser import parse
     from mineru.parser.writer import FileBasedDataWriter
     from mineru.config import config

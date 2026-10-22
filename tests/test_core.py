@@ -39,7 +39,11 @@ def test_lock_blocks_concurrent_writer_and_releases(tmp_path):
 
 
 @pytest.fixture
-def pdf(tmp_path):
+def pdf(tmp_path, monkeypatch):
+    import importlib.metadata
+    version = importlib.metadata.version
+    monkeypatch.setattr('paperbridge.core.importlib.metadata.version',
+                        lambda name: '4.0.12' if name == 'mineru' else version(name))
     path = tmp_path / '中文 sample.pdf'
     c = canvas.Canvas(str(path))
     c.drawString(50, 700, 'An original sentence for testing.')
@@ -86,3 +90,36 @@ def test_invalid_pages_create_no_job(pdf, tmp_path):
     with pytest.raises(ValueError):
         convert(pdf, tmp_path / 'out', pages='2')
     assert not (tmp_path / 'out').exists()
+
+
+def test_progress_and_checkpoint_reuse(pdf, tmp_path, monkeypatch):
+    from paperbridge.checkpoint import seal_chunk
+    calls, events = [], []
+    def worker(command, log, timeout):
+        calls.append(command)
+        root = Path(command[5])
+        for name in ('middle_json.json', 'markdown.md', 'structured_content.json'):
+            (root / name).write_text('{}')
+        seal_chunk(root)
+        return subprocess.CompletedProcess(command, 0)
+    monkeypatch.setattr('paperbridge.core.run_worker', worker)
+    monkeypatch.setattr('paperbridge.core.assemble', lambda *args: None)
+    monkeypatch.setattr('paperbridge.core.render_pages', lambda *args: None)
+    target, report = convert(pdf, tmp_path / 'out', on_event=events.append)
+    assert [e['stage'] for e in events] == ['preparing', 'parsing', 'parsing', 'assembling', 'rendering', 'finished']
+    assert events[-1]['completed_pages'] == events[-1]['total_pages'] == 1
+    convert(pdf, tmp_path / 'out')
+    assert len(calls) == 1
+    assert not (target / '.lock').exists()
+
+
+def test_cancel_during_parsing_preserves_lock_cleanup(pdf, tmp_path, monkeypatch):
+    from paperbridge.processes import ConversionCancelled
+    def cancelled(*args):
+        raise ConversionCancelled('stopped')
+    monkeypatch.setattr('paperbridge.core.run_worker', cancelled)
+    with pytest.raises(ConversionCancelled):
+        convert(pdf, tmp_path / 'out')
+    target = next((tmp_path / 'out').iterdir())
+    assert json.loads((target / 'report.json').read_text(encoding='utf-8'))['status'] == 'stopped'
+    assert not (target / '.lock').exists()

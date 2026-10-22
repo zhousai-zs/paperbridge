@@ -15,6 +15,7 @@ import signal
 from .environment import ROOT, configure
 from .quality import check_markdown, image_references, flatten_text
 from .checkpoint import cache_valid
+from .processes import check_cancelled, ConversionCancelled, hidden_options, module_command, terminate_tree
 
 
 def write_json(path, value):
@@ -77,21 +78,18 @@ def pdf_details(path, password=None):
 
 
 def run_worker(cmd, log, timeout):
-    options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name=='nt' else {'start_new_session':True}
-    process = subprocess.Popen(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,env=os.environ.copy(),**options)
+    process = subprocess.Popen(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,env=os.environ.copy(),**hidden_options())
     try:
-        return subprocess.CompletedProcess(cmd,process.wait(timeout=timeout))
-    except (subprocess.TimeoutExpired,KeyboardInterrupt):
-        if os.name=='nt':
-            subprocess.run(['taskkill','/PID',str(process.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
-        else:
-            try:
-                os.killpg(process.pid,signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        if process.poll() is None:
-            process.kill()
-        process.wait()
+        deadline = time.monotonic() + timeout
+        while process.poll() is None:
+            check_cancelled()
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            time.sleep(0.1)
+        check_cancelled()
+        return subprocess.CompletedProcess(cmd, process.returncode)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt, ConversionCancelled):
+        terminate_tree(process)
         raise
 
 
@@ -100,6 +98,7 @@ def render_pages(source, pages, output):
     output.mkdir(exist_ok=True)
     with pdfium.PdfDocument(str(source)) as doc:
         for idx in pages:
+            check_cancelled()
             path = output / f"page-{idx + 1:04}.png"
             if path.exists():
                 continue
@@ -154,8 +153,9 @@ def save_evidence(source, pages, root):
 
 
 def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
-            timeout=1800, ocr="auto", progress=print):
+            timeout=1800, ocr="auto", progress=print, on_event=None):
     configure()
+    check_cancelled()
     if tier not in {'basic', 'standard', 'advanced'} or ocr not in {'auto', 'txt', 'ocr'}:
         raise ValueError('Unsupported tier or OCR mode')
     source = Path(source).expanduser().resolve()
@@ -175,10 +175,10 @@ def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
     root = Path(output).expanduser().resolve() / f"{stem}-{job_hash}"
     root.mkdir(parents=True, exist_ok=True)
     with job_lock(root):
-        return _convert_locked(source, root, config, count, selected, timeout, progress)
+        return _convert_locked(source, root, config, count, selected, timeout, progress, on_event)
 
 
-def _convert_locked(source, root, config, count, selected, timeout, progress):
+def _convert_locked(source, root, config, count, selected, timeout, progress, on_event=None):
     start = time.monotonic()
     report = {
         "schema_version": 1, "status": "running", "config": config,
@@ -196,12 +196,25 @@ def _convert_locked(source, root, config, count, selected, timeout, progress):
     snapshot = root / "source.pdf"
     write_json(root / "manifest.json", config)
     chunks = [selected[i:i + config["chunk_size"]] for i in range(0, len(selected), config["chunk_size"])]
+    def notify(stage, **extra):
+        report.update(stage=stage, **extra)
+        write_json(root / "report.json", report)
+        if on_event:
+            on_event({"stage": stage, "output": str(root),
+                      "owner_pid": os.getpid(),
+                      "total_pages": len(selected), "completed_pages": report.get("completed_pages", 0),
+                      **extra})
+
     try:
+        notify("preparing", completed_pages=0)
         if not snapshot.exists():
             shutil.copyfile(source, snapshot)
         if digest_file(snapshot) != config['source_sha256']:
             raise RuntimeError(f'Source changed during conversion or snapshot was modified: {snapshot}')
         for number, indices in enumerate(chunks):
+            check_cancelled()
+            notify("parsing", current_pages=[i + 1 for i in indices],
+                   chunk=number + 1, total_chunks=len(chunks))
             chunk = root / "chunks" / f"{number:04}"
             chunk.mkdir(parents=True, exist_ok=True)
             page_spec = ",".join(str(i + 1) for i in indices)
@@ -209,8 +222,8 @@ def _convert_locked(source, root, config, count, selected, timeout, progress):
             cached = cache_valid(chunk)
             if not cached:
                 (chunk / 'DONE').unlink(missing_ok=True)
-                cmd = [sys.executable, "-m", "paperbridge.worker", str(snapshot), str(chunk),
-                       "--tier", config["tier"], "--pages", page_spec, "--ocr", config["ocr"]]
+                cmd = module_command('paperbridge.worker', snapshot, chunk,
+                       '--tier', config['tier'], '--pages', page_spec, '--ocr', config['ocr'])
                 with (chunk / "engine.log").open("w", encoding="utf-8") as log:
                     result = run_worker(cmd, log, timeout)
                 if result.returncode:
@@ -218,12 +231,18 @@ def _convert_locked(source, root, config, count, selected, timeout, progress):
                 if not (chunk / "DONE").is_file():
                     raise RuntimeError(f"Parser produced no completion marker: {chunk}")
             report["chunks"].append({"index": number, "pages": indices, "cached": cached})
-            write_json(root / "report.json", report)
+            notify("parsing", completed_pages=sum(len(c['pages']) for c in report['chunks']))
+        notify("assembling")
+        check_cancelled()
         assemble(root, selected, report)
+        notify("rendering")
         render_pages(snapshot, selected, root / "pages")
+        check_cancelled()
         report["status"] = "needs_review" if report["issues"] else "complete"
+        notify("finished", status=report["status"])
     except (Exception, KeyboardInterrupt) as exc:
-        report["status"] = "failed"
+        report["status"] = 'stopped' if isinstance(exc, ConversionCancelled) else 'failed'
+        report['stage'] = report['status']
         report["issues"].append({"code": "conversion_failed", "detail": str(exc) or type(exc).__name__})
         raise
     finally:
@@ -236,6 +255,7 @@ def assemble(root, selected, report):
     from mineru.parser import ParseResult
     sections, all_pages = [], []
     for item in report["chunks"]:
+        check_cancelled()
         relative = f"chunks/{item['index']:04}"
         chunk = root / relative
         raw = json.loads((chunk / "middle_json.json").read_text(encoding="utf-8"))
