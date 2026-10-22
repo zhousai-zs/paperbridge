@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paperbridge"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local academic PDF to auditable, agent-readable Markdown"
 requires-python = ">=3.12,<3.15"
 dependencies = ["mineru==4.0.12", "pypdfium2==5.14.0", "pypdf>=6", "pillow>=12"]

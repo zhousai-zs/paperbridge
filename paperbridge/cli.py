@@ -23,6 +23,7 @@ def main(argv=None):
     conv.add_argument("--ocr", choices=["auto", "txt", "ocr"], default="auto")
     conv.add_argument("--chunk-size", type=int, default=20)
     conv.add_argument("--timeout", type=float, default=1800)
+    conv.add_argument('--retries', type=int, default=1, help='Additional attempts per failed chunk (0-5; default 1)')
     conv.add_argument("--recursive", action="store_true")
     conv.add_argument("--offline", action="store_true", help="Require local models; never download them")
     conv.add_argument('--progress-json', action='store_true', help=argparse.SUPPRESS)
@@ -31,12 +32,39 @@ def main(argv=None):
     export = commands.add_parser('export', help='Export an Agent reading ZIP, including legacy revisions')
     export.add_argument('result')
     export.add_argument('-o', '--output', required=True)
+    verify = commands.add_parser('verify', help='Check existing results and image pixels without conversion')
+    verify.add_argument('results', nargs='+', help='Result folders or a batch output folder')
+    verify.add_argument('--report', help='Save a combined JSON validation report')
     doctor = commands.add_parser("doctor", help="Inspect runtime/model readiness")
     doctor.add_argument("--models", action="store_true")
     args = parser.parse_args(argv)
     if args.command in {'gui', 'ui'}:
         from .gui import launch
         return launch(args.output)
+    if args.command == 'verify':
+        from .integrity import validate_bundle
+        from .core import write_json
+        roots, results = set(), []
+        for raw in args.results:
+            path = Path(raw).expanduser().resolve()
+            if (path / 'report.json').is_file():
+                roots.add(path)
+            elif path.is_dir():
+                roots.update(p.parent for p in path.rglob('report.json') if 'history' not in p.relative_to(path).parts)
+        for root in sorted(roots):
+            result = {'output': str(root), **validate_bundle(root)}
+            results.append(result)
+            print(f"{'PASS' if result['passed'] else 'FAIL'}: {root}")
+            for issue in result['issues']:
+                print(f"  {issue['code']}: {issue.get('detail', '')}")
+        summary = {'passed': bool(results) and all(r['passed'] for r in results), 'documents': results}
+        if args.report:
+            destination = Path(args.report).expanduser().resolve()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            write_json(destination, summary)
+        if not results:
+            print('No conversion reports found.', file=sys.stderr)
+        return 0 if summary['passed'] else 1
     if args.command == 'export':
         from .bundles import export_bundle
         try:
@@ -92,7 +120,7 @@ def main(argv=None):
         try:
             target, report = convert(
                 source, args.output, tier=args.tier, pages=args.pages, chunk_size=args.chunk_size,
-                timeout=args.timeout, ocr=args.ocr,
+                timeout=args.timeout, ocr=args.ocr, retries=args.retries,
                 on_event=(lambda event: print('PAPERBRIDGE_EVENT ' + json.dumps(event), flush=True))
                 if args.progress_json else None,
             )

@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-22",
+  "version": "0.3.1",
+  "branch": "main",
+  "base_commit": "6923f61f3267ad8e20ad924d129f19de60b21449",
+  "tests": {
+    "passed": 44,
+    "log": "local evidence retained outside Git"
+  },
+  "historical_batch": {
+    "documents": 24,
+    "pages": 484,
+    "all_assets_passed": true,
+    "checked_image_paths": 1930,
+    "content_issue": "DiTTo: unbalanced_display_math"
+  },
+  "source_live_conversions": [
+    {
+      "source": "fixture_en_1col.pdf",
+      "pages": [
+        1
+      ],
+      "seconds": 19.78,
+      "integrity": {
+        "passed": true,
+        "assets_passed": true,
+        "checked_images": 6,
+        "issues": [],
+        "accuracy_verified": false
+      }
+    },
+    {
+      "source": "Q-Agent.pdf",
+      "pages": [
+        1,
+        2
+      ],
+      "seconds": 23.58,
+      "integrity": {
+        "passed": true,
+        "assets_passed": true,
+        "checked_images": 3,
+        "issues": [],
+        "accuracy_verified": false
+      }
+    }
+  ],
+  "frozen_live_conversions": [
+    {
+      "source": "fixture_zh_2col.pdf",
+      "pages": [
+        1
+      ],
+      "first_run_seconds": 24.33,
+      "cached_run_seconds": 0.19,
+      "cached": true,
+      "integrity": {
+        "passed": true,
+        "assets_passed": true,
+        "checked_images": 6,
+        "issues": [],
+        "accuracy_verified": false
+      }
+    },
+    {
+      "source": "Q-Agent.pdf",
+      "pages": [
+        1
+      ],
+      "first_run_seconds": 60.27,
+      "cached_run_seconds": 0.56,
+      "cached": true,
+      "integrity": {
+        "passed": true,
+        "assets_passed": true,
+        "checked_images": 2,
+        "issues": [],
+        "accuracy_verified": false
+      }
+    }
+  ],
+  "frozen_gui": {
+    "actual_exe_started": true,
+    "native_window": true,
+    "exit_code": 0,
+    "development_python_paths_removed": true
+  },
+  "package_checks": {
+    "wheel_passed": true,
+    "zip_executable_hashes_passed": true,
+    "zip_model_sizes_passed": true,
+    "no_papers_in_archive": true,
+    "clean_machine_verified": false
+  },
+  "portable": {
+    "executable": "PaperBridge-0.3.1/PaperBridge.exe (local build)",
+    "bytes": 2068566015,
+    "sha256": "aa6dfd4e72394ccf5854be7d42e291ff090a3294298560d9534e6df2e0b9cfb4",
+    "original_zip_removed_during_cleanup": true,
+    "local_only": true
+  },
+  "build_source_uncommitted_at_validation": true,
+  "github_release_published": false
+}

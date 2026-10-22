@@ -98,3 +98,16 @@ def test_batch_level_error_stays_visible_after_done(app):
     assert '运行失败' in app.status.get()
     assert '输出磁盘' in app.phase.get()
     assert app.progress['value'] == 0
+
+
+def test_formula_progress_retry_and_validation_are_visible(app):
+    app.handle_event({'kind': 'progress', 'stage': 'parsing', 'total_pages': 20,
+                      'completed_pages': 0, 'current_pages': [1, 20],
+                      'worker_step': 'formula_recognition', 'step_completed': 8,
+                      'step_total': 436, 'elapsed_seconds': 32})
+    assert '公式' in app.phase.get() and '8/436' in app.phase.get() and '32 秒' in app.phase.get()
+    app.handle_event({'kind': 'progress', 'stage': 'retrying', 'attempt': 2, 'max_attempts': 2})
+    assert '重试' in app.phase.get()
+    app.handle_event({'kind': 'progress', 'stage': 'validating'})
+    assert '校验' in app.phase.get()
+    app.progress.stop()

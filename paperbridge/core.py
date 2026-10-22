@@ -15,13 +15,29 @@ import signal
 from .environment import ROOT, configure
 from .quality import check_markdown, image_references, flatten_text
 from .checkpoint import cache_valid
+from .integrity import IntegrityError, chunk_issues, validate_bundle
+from .performance import log_progress, summarize_log
 from .processes import check_cancelled, ConversionCancelled, hidden_options, module_command, terminate_tree
 
 
 def write_json(path, value):
     temp = path.with_name(path.name + f'.{os.getpid()}.{time.time_ns()}.tmp')
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(path)
+    try:
+        temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+        for attempt in range(6):
+            try:
+                temp.replace(path)
+                break
+            except PermissionError:
+                # Windows readers / antivirus can briefly deny an atomic replacement.
+                if os.name != 'nt' or attempt == 5:
+                    raise
+                time.sleep(0.02 * 2 ** attempt)
+    finally:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def digest_file(path):
@@ -64,7 +80,7 @@ def job_lock(root):
 
 def rebase_images(markdown, prefix):
     # Engine asset names are ASCII relative paths. Keep them stable in saved JSON.
-    return re.sub(r'(?<=[("])images/', prefix + "/images/", markdown)
+    return re.sub(r'''(?<=[("'<])images/''', prefix + "/images/", markdown)
 
 
 def pdf_details(path, password=None):
@@ -77,14 +93,27 @@ def pdf_details(path, password=None):
     return len(reader.pages)
 
 
-def run_worker(cmd, log, timeout):
+def run_worker(cmd, log, timeout, on_update=None):
     process = subprocess.Popen(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,env=os.environ.copy(),**hidden_options())
     try:
         deadline = time.monotonic() + timeout
+        next_update = 0
         while process.poll() is None:
             check_cancelled()
             if time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(cmd, timeout)
+            if on_update and time.monotonic() >= next_update:
+                next_update = time.monotonic() + 1
+                status = Path(log.name).parent / 'worker-status.json'
+                try:
+                    event = json.loads(status.read_text(encoding='utf-8'))
+                    if event.get('worker_step') == 'inference':
+                        with Path(log.name).open('rb') as reader:
+                            reader.seek(max(0, reader.seek(0, 2) - 8192))
+                            event.update(log_progress(reader.read().decode('utf-8', errors='replace')))
+                    on_update(event)
+                except (OSError, ValueError):
+                    pass
             time.sleep(0.1)
         check_cancelled()
         return subprocess.CompletedProcess(cmd, process.returncode)
@@ -101,7 +130,9 @@ def render_pages(source, pages, output):
             check_cancelled()
             path = output / f"page-{idx + 1:04}.png"
             if path.exists():
-                continue
+                from .integrity import check_images
+                if not check_images([path.name], output):
+                    continue
             page = doc[idx]
             bitmap = page.render(scale=1.5)
             bitmap.to_pil().save(path)
@@ -113,7 +144,7 @@ def rebase_structure(value, prefix):
     if isinstance(value, list):
         return [rebase_structure(v, prefix) for v in value]
     if isinstance(value, dict):
-        return {k: (prefix + '/' + v if k == 'image_path' and isinstance(v, str) and v.startswith('images/')
+        return {k: (prefix + '/' + v if k in {'image_path', 'img_path'} and isinstance(v, str) and v.startswith('images/')
                     else rebase_structure(v, prefix)) for k, v in value.items()}
     if isinstance(value, str):
         return rebase_images(value, prefix)
@@ -153,7 +184,7 @@ def save_evidence(source, pages, root):
 
 
 def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
-            timeout=1800, ocr="auto", progress=print, on_event=None):
+            timeout=1800, ocr="auto", progress=print, on_event=None, retries=1):
     configure()
     check_cancelled()
     if tier not in {'basic', 'standard', 'advanced'} or ocr not in {'auto', 'txt', 'ocr'}:
@@ -165,6 +196,8 @@ def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
     selected = select_pages(pages, count)
     if chunk_size < 1 or timeout <= 0:
         raise ValueError("chunk-size and timeout must be positive")
+    if type(retries) is not int or not 0 <= retries <= 5:
+        raise ValueError('retries must be an integer between 0 and 5')
     config = {
         "source_sha256": digest_file(source), "pages": selected, "tier": tier,
         "ocr": ocr, "chunk_size": chunk_size, "mineru": importlib.metadata.version("mineru"),
@@ -175,10 +208,10 @@ def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
     root = Path(output).expanduser().resolve() / f"{stem}-{job_hash}"
     root.mkdir(parents=True, exist_ok=True)
     with job_lock(root):
-        return _convert_locked(source, root, config, count, selected, timeout, progress, on_event)
+        return _convert_locked(source, root, config, count, selected, timeout, progress, on_event, retries)
 
 
-def _convert_locked(source, root, config, count, selected, timeout, progress, on_event=None):
+def _convert_locked(source, root, config, count, selected, timeout, progress, on_event=None, retries=1):
     start = time.monotonic()
     report = {
         "schema_version": 1, "status": "running", "config": config,
@@ -186,6 +219,7 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
         "selected_pages": [i + 1 for i in selected],
         "started_at": datetime.now(timezone.utc).isoformat(),
         "chunks": [], "issues": [], "accuracy_verified": False,
+        "stage_seconds": {}, "retry_limit": retries,
     }
     previous = root / 'report.json'
     if previous.exists():
@@ -196,13 +230,28 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
     snapshot = root / "source.pdf"
     write_json(root / "manifest.json", config)
     chunks = [selected[i:i + config["chunk_size"]] for i in range(0, len(selected), config["chunk_size"])]
+    current_stage, stage_started = None, time.monotonic()
+    def record_stage():
+        nonlocal stage_started
+        now = time.monotonic()
+        if current_stage:
+            report['stage_seconds'][current_stage] = round(
+                report['stage_seconds'].get(current_stage, 0) + now - stage_started, 4)
+        stage_started = now
+
     def notify(stage, **extra):
+        nonlocal current_stage
+        if current_stage != stage:
+            record_stage()
+            current_stage = stage
         report.update(stage=stage, **extra)
+        report['elapsed_seconds'] = round(time.monotonic() - start, 2)
         write_json(root / "report.json", report)
         if on_event:
             on_event({"stage": stage, "output": str(root),
                       "owner_pid": os.getpid(),
                       "total_pages": len(selected), "completed_pages": report.get("completed_pages", 0),
+                      "elapsed_seconds": report['elapsed_seconds'],
                       **extra})
 
     try:
@@ -219,18 +268,62 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
             chunk.mkdir(parents=True, exist_ok=True)
             page_spec = ",".join(str(i + 1) for i in indices)
             progress(f"[{number + 1}/{len(chunks)}] pages {page_spec}", flush=True)
-            cached = cache_valid(chunk)
+            chunk_started = time.monotonic()
+            cached = cache_valid(chunk, expected_pages=indices)
+            chunk_report = {"index": number, "pages": indices, "cached": cached, "attempts": []}
+            report['chunks'].append(chunk_report)
             if not cached:
-                (chunk / 'DONE').unlink(missing_ok=True)
                 cmd = module_command('paperbridge.worker', snapshot, chunk,
                        '--tier', config['tier'], '--pages', page_spec, '--ocr', config['ocr'])
-                with (chunk / "engine.log").open("w", encoding="utf-8") as log:
-                    result = run_worker(cmd, log, timeout)
-                if result.returncode:
-                    raise RuntimeError(f"Parser failed ({result.returncode}). See {chunk / 'engine.log'}")
-                if not (chunk / "DONE").is_file():
-                    raise RuntimeError(f"Parser produced no completion marker: {chunk}")
-            report["chunks"].append({"index": number, "pages": indices, "cached": cached})
+                for attempt in range(retries + 1):
+                    check_cancelled()
+                    # Archive failed/invalid output so stale images cannot satisfy a new attempt.
+                    if any(chunk.iterdir()):
+                        archive = root / 'history' / f'chunk-{number:04}-{time.time_ns()}'
+                        archive.parent.mkdir(exist_ok=True)
+                        if not (chunk.resolve().is_relative_to(root.resolve()) and
+                                archive.resolve().is_relative_to(root.resolve())):
+                            raise RuntimeError('Checkpoint archive must stay inside the result folder')
+                        shutil.move(str(chunk), str(archive))
+                        chunk.mkdir()
+                        if len(chunk_report['attempts']):
+                            chunk_report['attempts'][-1]['archive'] = archive.relative_to(root).as_posix()
+                    attempt_started = time.monotonic()
+                    attempt_report = {'attempt': attempt + 1}
+                    chunk_report['attempts'].append(attempt_report)
+                    notify('parsing', attempt=attempt + 1, max_attempts=retries + 1,
+                           worker_step='loading_engine', step_completed=0, step_total=0)
+                    try:
+                        with (chunk / "engine.log").open("w", encoding="utf-8") as log:
+                            result = run_worker(cmd, log, timeout,
+                                on_update=lambda event: notify('parsing', **event))
+                        if result.returncode:
+                            raise RuntimeError(f"Parser failed ({result.returncode}). See {chunk / 'engine.log'}")
+                        if not cache_valid(chunk, expected_pages=indices):
+                            raise IntegrityError(chunk_issues(chunk, indices) or [
+                                {'code': 'invalid_checkpoint', 'detail': str(chunk)}])
+                        attempt_report['status'] = 'complete'
+                        break
+                    except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                        attempt_report.update(status='failed', error=str(exc))
+                        if isinstance(exc, IntegrityError):
+                            attempt_report['issues'] = exc.issues
+                        if attempt == retries:
+                            raise
+                        notify('retrying', attempt=attempt + 2, max_attempts=retries + 1,
+                               retry_reason=str(exc))
+                        progress(f'Retrying chunk {number + 1}: {exc}', flush=True)
+                    finally:
+                        attempt_report['elapsed_seconds'] = round(time.monotonic() - attempt_started, 3)
+            chunk_report['elapsed_seconds'] = round(time.monotonic() - chunk_started, 3)
+            timing = chunk / 'engine-timing.json'
+            if timing.exists():
+                try:
+                    chunk_report['engine_timing'] = json.loads(timing.read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    pass
+            if (chunk / 'engine.log').exists():
+                chunk_report['engine_log_timing'] = summarize_log((chunk / 'engine.log').read_text(encoding='utf-8', errors='replace'))
             notify("parsing", completed_pages=sum(len(c['pages']) for c in report['chunks']))
         notify("assembling")
         check_cancelled()
@@ -238,6 +331,14 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
         notify("rendering")
         render_pages(snapshot, selected, root / "pages")
         check_cancelled()
+        notify('validating')
+        report['integrity'] = validate_bundle(root, report)
+        write_json(root / 'integrity.json', report['integrity'])
+        if not report['integrity']['assets_passed']:
+            raise IntegrityError(report['integrity']['issues'])
+        for issue in report['integrity']['issues']:
+            if issue not in report['issues']:
+                report['issues'].append(issue)
         report["status"] = "needs_review" if report["issues"] else "complete"
         notify("finished", status=report["status"])
     except (Exception, KeyboardInterrupt) as exc:
@@ -246,6 +347,7 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
         report["issues"].append({"code": "conversion_failed", "detail": str(exc) or type(exc).__name__})
         raise
     finally:
+        record_stage()
         report["elapsed_seconds"] = round(time.monotonic() - start, 2)
         write_json(root / "report.json", report)
     return root, report

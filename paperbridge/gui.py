@@ -255,12 +255,23 @@ class DesktopApp:
                     self.progress.stop()
                     self.progress.configure(mode='determinate', value=100 * completed / total)
                 current = f"第 {pages[0]}–{pages[-1]} 页" if pages else '当前分段'
-                self.phase.set(f'正在识别{current} · 已完成 {completed} / {total} 页 · 请稍候…')
-            elif stage in {'assembling', 'rendering'}:
+                step_names = {'loading_engine': '正在加载解析引擎', 'inference': '正在识别',
+                              'layout': '正在分析版式', 'visual_recognition': '正在识别图表',
+                              'formula_recognition': '正在识别公式', 'text_detection': '正在检测文字',
+                              'text_recognition': '正在识别文字', 'saving_assets': '正在保存正文与图片',
+                              'checking_assets': '正在校验图片'}
+                step = step_names.get(event.get('worker_step'), '正在识别')
+                detail = f" {event['step_completed']}/{event['step_total']}" if event.get('step_total') else ''
+                elapsed = f" · 已用 {event['elapsed_seconds']:.0f} 秒" if 'elapsed_seconds' in event else ''
+                self.phase.set(f'{step}{detail} · {current} · 已完成 {completed} / {total} 页{elapsed}')
+            elif stage == 'retrying':
+                self.phase.set(f"当前分段未通过，正在重试（第 {event.get('attempt', 2)} / {event.get('max_attempts', 2)} 次）…")
+            elif stage in {'assembling', 'rendering', 'validating'}:
                 self.progress.stop()
                 self.progress.configure(mode='indeterminate')
                 self.progress.start(20)
-                self.phase.set('正在组装 Markdown 与核对素材…' if stage == 'assembling' else '正在生成原页图…')
+                self.phase.set({'assembling': '正在组装 Markdown 与核对素材…',
+                                'rendering': '正在生成原页图…', 'validating': '正在校验图片、页码与检查点…'}[stage])
         elif kind == 'result':
             self.results.append(event)
             status = {'complete': '完成', 'needs_review': '需复核', 'failed': '失败', 'stopped': '已停止'}[event['status']]

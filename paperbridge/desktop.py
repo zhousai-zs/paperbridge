@@ -22,6 +22,7 @@ class Options:
     ocr: str = 'auto'
     chunk_size: int = 20
     timeout: float = 1800
+    retries: int = 1
 
     def validate(self):
         import math
@@ -30,6 +31,8 @@ class Options:
             raise ValueError('请选择有效的转换模式和 OCR 模式。')
         if self.chunk_size < 1 or not math.isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError('分段页数和超时必须大于 0。')
+        if type(self.retries) is not int or not 0 <= self.retries <= 5:
+            raise ValueError('重试次数必须为 0 到 5。')
         if self.pages != 'all' and not re.fullmatch(r'\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*', self.pages):
             raise ValueError('页码请填写 all 或 1-3,5 这样的格式。')
 
@@ -95,6 +98,8 @@ def friendly_error(message):
         return '当前分段超时，可增加超时后重试；已完成的检查点会复用。'
     if 'lock needs inspection' in lower or 'job already running' in lower:
         return '该结果正在处理或有异常退出留下的锁；请查看错误详情。'
+    if 'integrity check failed' in lower:
+        return '结果图片或检查点未通过完整性校验，自动重试后仍有问题。请查看错误详情；再次重试会复用完好的分段。'
     if ('model' in lower or '模型' in lower) and any(s in lower for s in ('missing', 'not ready', 'not found')):
         return '本地模型不完整，请重新解压完整便携包后重试。'
     if 'not a pdf' in lower or 'invalid pdf' in lower or 'stream has ended' in lower:
@@ -157,7 +162,8 @@ class BatchRunner:
                 command = module_command('paperbridge.cli', 'convert', source, '-o', output,
                                          '--offline', '--progress-json', '--tier', options.tier,
                                          '--pages', options.pages, '--ocr', options.ocr,
-                                         '--chunk-size', options.chunk_size, '--timeout', options.timeout)
+                                         '--chunk-size', options.chunk_size, '--timeout', options.timeout,
+                                         '--retries', options.retries)
                 process, tail = None, []
                 try:
                     env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8',
