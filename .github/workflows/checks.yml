@@ -1,0 +1,30 @@
+name: Core and desktop checks
+on:
+  push:
+    branches: [main, 'codex/desktop-gui']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-test.txt
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: Core, process, export and desktop state tests (Windows)
+        if: runner.os == 'Windows'
+        run: python -m pytest -q
+      - name: Core and native desktop tests (Linux virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m pytest -q
+      - name: Verify source wheel and absence of web resources
+        run: python scripts/check_package.py

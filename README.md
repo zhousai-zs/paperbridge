@@ -1,14 +1,20 @@
-# PaperBridge：论文 PDF → Agent Markdown
+# PaperBridge：极简桌面 PDF → Markdown
 
 本地论文转换工具。支持中文、英文、单栏、双栏、扫描版、图片、公式和表格。基于 MinerU 4.0.12，增加可追溯输出、批处理、断点续跑和完整性检查。
 
 ## 现在就用
 
-首次使用先按下方“安装到 Windows 机器”准备环境与模型。已经安装的机器可以直接双击仓库目录中的 **PDF转Markdown.cmd**，在窗口中选择一份或多份 PDF。转换完成后，在 `outputs/论文名-哈希/` 找到 **document.md**。
+下载完整 Windows x64 便携包，解压后双击 **PaperBridge.exe**：选择一份或多份 PDF、选择输出文件夹、点击“开始转换”。输出位置会记住上次选择；更多选项默认折叠。
+
+便携包包含 Python 运行环境、标准／快速模式模型，使用时无需安装 Python、联网或 API Key。请保留整个程序文件夹，不能单独移动 EXE。操作与错误处理见 [桌面版使用说明](docs/桌面版使用说明.md)。
+
+不提供 Web 服务、文档库、内置阅读和人工修订界面。完整保留核心转换、批量、断点续跑、原页与证据素材。进度按已完成分段更新；停止后保留完整检查点，可重试未完成项。旧结果与 `review/` 修订不被删除，可使用 `export` 导出阅读包。
+
+源码用户按下方步骤安装后，可运行 `.venv\Scripts\pythonw.exe -m paperbridge.cli gui`；原 `论文工作台.cmd` 转向桌面启动器，`PDF转Markdown.cmd` 继续可用。每篇结果仍包含 **document.md**。
 
 把整个结果文件夹交给 agent，告诉它：**先读 AGENT_README.md，再读 document.md；关键公式和表格请结合对应原图核对。**
 
-默认 Standard 高质量模式。转换在本机完成，不需要 API Key。第一次安装要联网下载依赖与模型；安装后可以完全离线运行。
+默认 Standard 高质量模式。只有源码环境的首次安装需要联网下载依赖与模型；完整便携包已包含运行所需文件。
 
 ## 命令行
 
@@ -32,13 +38,21 @@
 
 # 检查环境与模型
 .\.venv\Scripts\paperbridge.exe doctor --models
+
+# 桌面入口；ui 为兼容别名，不再支持端口参数
+.\.venv\Scripts\paperbridge.exe gui
+
+# 导出 Agent 阅读包，合入旧 review/ 修订；ZIP 保存在结果目录之外
+.\.venv\Scripts\paperbridge.exe export "D:\结果\论文目录" -o "D:\阅读包\论文.zip"
 ```
+
+便携包用户将上面的 `.venv\Scripts\paperbridge.exe` 替换为 `PaperBridge-CLI.exe`。便携包默认在用户“文档”目录写结果，源码命令行仍默认项目 `outputs/`。桌面端始终使用自己记住的输出位置。
 
 `--tier` 支持 basic、standard、advanced。已实测 basic 和 standard；advanced 接口可用但本项目未做质量验证，不作为推荐默认值。
 
 长论文默认每 20 页保存一个检查点，单段超时 1800 秒，可用 `--chunk-size` 和 `--timeout` 调整。使用完全相同的参数重跑，会校验已完成段的文件哈希并复用。换页码或模式会产生独立结果目录。修改过的缓存会重新解析；不要在生成目录中保存唯一一份手工修改稿。
 
-退出码：`0` = 转换和机械检查通过；`2` = 已输出但有明确复核项；`1` = 失败。目录中的 `batch-report.json` 汇总每份结果。空白页、损坏页或未识别公式等问题不会被当作无问题成功。
+退出码：`0` = 转换和机械检查通过；`2` = 已输出但有明确复核项；`1` = 失败；`130` = 用户停止。目录中的 `batch-report.json` 汇总每份结果。空白页、损坏页或未识别公式等问题不会被当作无问题成功。
 
 ## 输出包含什么
 
@@ -58,7 +72,7 @@ Markdown 图片文件在 `chunks/0000/images/` 等目录中。**移动或分享�
 
 ## 实测范围与限制
 
-在 Windows、Python 3.12.14 上完成 **13 份 PDF、44 页**的两档转换，包括 Attention 全文、Raft 全文、7 页有人工标注的真实中英文扫描论文页、4 份可控单双栏回归样本。标准档的最终包通过完整性检查，并保留了 38 个公式/表格裁片。
+原转换引擎的历史验证在 Windows、Python 3.12.14 上完成 **13 份 PDF、44 页**的两档转换，包括 Attention 全文、Raft 全文、7 页有人工标注的真实中英文扫描论文页、4 份可控单双栏回归样本。标准档的最终包通过完整性检查，并保留了 38 个公式/表格裁片。桌面便携版的本次验收另见 [桌面版验收](research/桌面版验收.md)，不将历史结果作为本次 EXE 验收。
 
 详细指标、例子和未覆盖内容见 [测试报告](research/测试报告.md)，选型依据见 [工具调研](research/工具调研.md)。仓库不包含模型、论文、原始基准标注和转换结果；复现时由脚本下载或自行提供输入。
 
@@ -95,6 +109,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Python "C:\Python312\pytho
 
 ```powershell
 # 不启动识别模型的程序测试
+New-Item -ItemType Directory -Force .cache | Out-Null
 .\.venv\Scripts\python.exe -m pytest -q --basetemp .cache\pytest
 
 # 下载基准图像并生成扫描 PDF
@@ -108,3 +123,24 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Python "C:\Python312\pytho
 ```
 
 评估脚本是透明的小规模核对，不是官方 OmniDocBench 全量评测，也不把字符串相似度称为公式语义准确率。
+
+## 桌面开发与便携包构建
+
+在 Windows x64、Python 3.12 的完整推理环境中安装 `requirements-build.txt`，然后运行：
+
+```powershell
+# 模型已由 setup.ps1 准备好；构建过程不下载模型
+.\.venv\Scripts\python.exe scripts\build_portable.py --models .cache\mineru\models
+
+# 无模型的原生窗口检查及截图
+.\.venv\Scripts\python.exe scripts\check_desktop.py
+.\.venv\Scripts\python.exe scripts\check_package.py
+
+# 实际 EXE 窗口与真实模型回归
+.\.venv\Scripts\python.exe scripts\check_frozen_gui.py --exe dist\PaperBridge\PaperBridge.exe --output .cache\frozen-gui
+.\.venv\Scripts\python.exe scripts\check_portable.py --bundle dist\PaperBridge --corpus tests\corpus
+```
+
+生成 `dist/PaperBridge/`、版本 ZIP 及 SHA-256 文件，包内 `build-info.json` 记录提交、EXE 和模型哈希。源码归档使用 `scripts/package_source.py`，只包含 Git 已跟踪文件。
+
+CI 在 Windows 与 Linux 虚拟显示环境运行无模型测试及 wheel 检查；不启动 Web 或下载识别模型。真实模型检查清除开发环境变量、收紧 PATH 并使用不可达代理，但**不等同于全新无 Python 机器或操作系统级断网测试**；全新机器验收应单独记录。

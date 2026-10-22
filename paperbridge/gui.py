@@ -22,6 +22,7 @@ class DesktopApp:
         self.advanced_open = False
         self.details_open = False
         self.current = 0
+        self.batch_error = ''
         root.title('PaperBridge')
         root.minsize(660, 450)
         root.geometry('720x520')
@@ -215,6 +216,7 @@ class DesktopApp:
             return
         self.output.set(str(output))
         self.results = []
+        self.batch_error = ''
         self.retry.pack_forget()
         self.details_button.grid_remove()
         self.details.grid_remove()
@@ -270,6 +272,7 @@ class DesktopApp:
                 self.details.configure(state='disabled')
                 self.details_button.grid(row=10, column=0, sticky='w', pady=(5, 0))
         elif kind == 'error':
+            self.batch_error = event['error']
             self.details.configure(state='normal')
             self.details.insert('end', event['error'] + '\n')
             self.details.configure(state='disabled')
@@ -284,6 +287,10 @@ class DesktopApp:
             self.status.set(f"{'已停止' if event['stopped'] else '处理结束'} · 完成 {counts['complete']} · "
                             f"需复核 {counts['needs_review']} · 失败 {counts['failed']} · 停止 {counts['stopped']}")
             self.phase.set('点击“打开输出文件夹”查看结果；需复核项请结合原页与报告核对。')
+            if self.batch_error:
+                self.status.set('运行失败，请查看错误详情。')
+                self.phase.set(self.batch_error)
+                self.progress.configure(value=0)
             if counts['failed'] or counts['stopped']:
                 self.retry.configure(text='重试未完成项')
                 self.retry.pack(side='left', padx=10)

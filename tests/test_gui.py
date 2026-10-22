@@ -1,4 +1,5 @@
 import queue
+import sys
 import tkinter as tk
 
 import pytest
@@ -19,18 +20,30 @@ class Runner:
         self.stopped = True
 
 
-@pytest.fixture
-def app(tmp_path, monkeypatch):
-    monkeypatch.setenv('PAPERBRIDGE_STATE', str(tmp_path / 'state'))
+@pytest.fixture(scope='module')
+def tk_root():
     try:
         root = tk.Tk()
-    except tk.TclError:
-        pytest.skip('A display is required for native Tk checks; run with xvfb-run on Linux.')
+    except tk.TclError as exc:
+        if sys.platform == 'win32':
+            raise
+        pytest.skip(f'A display is required for native Tk checks; run with xvfb-run on Linux: {exc}')
     root.withdraw()
-    instance = DesktopApp(root, tmp_path / '输出', runner=Runner())
+    yield root
+    root.destroy()
+
+
+@pytest.fixture
+def app(tmp_path, monkeypatch, tk_root):
+    monkeypatch.setenv('PAPERBRIDGE_STATE', str(tmp_path / 'state'))
+    window = tk.Toplevel(tk_root)
+    window.withdraw()
+    instance = DesktopApp(window, tmp_path / '输出', runner=Runner())
     yield instance
     try:
-        root.destroy()
+        for timer in tk_root.tk.splitlist(tk_root.tk.call('after', 'info')):
+            tk_root.after_cancel(timer)
+        window.destroy()
     except tk.TclError:
         pass
 
@@ -77,3 +90,11 @@ def test_close_can_be_declined_then_stops_before_exiting(app, tmp_path, monkeypa
     monkeypatch.setattr('paperbridge.gui.messagebox.askyesno', lambda *a, **k: True)
     app.close()
     assert app.runner.stopped and app.closing
+
+
+def test_batch_level_error_stays_visible_after_done(app):
+    app.handle_event({'kind': 'error', 'error': '输出磁盘已不可用'})
+    app.handle_event({'kind': 'done', 'stopped': False})
+    assert '运行失败' in app.status.get()
+    assert '输出磁盘' in app.phase.get()
+    assert app.progress['value'] == 0
