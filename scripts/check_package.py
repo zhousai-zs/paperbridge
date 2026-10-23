@@ -12,6 +12,6 @@ wheel = target / build_wheel(str(target))
 with zipfile.ZipFile(wheel) as file:
     files = set(file.namelist())
     assert {'paperbridge/gui.py', 'paperbridge/desktop.py', 'paperbridge/processes.py',
-            'paperbridge/bundles.py', 'paperbridge/worker.py'} <= files
+            'paperbridge/bundles.py', 'paperbridge/worker.py', 'paperbridge/engine.py'} <= files
     assert not any(name.startswith('paperbridge/web/') or name == 'paperbridge/workbench.py' for name in files)
 print('PASS: desktop wheel, no PaperBridge Web implementation')

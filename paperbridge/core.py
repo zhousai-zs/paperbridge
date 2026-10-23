@@ -1,4 +1,4 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
@@ -93,7 +93,9 @@ def pdf_details(path, password=None):
     return len(reader.pages)
 
 
-def run_worker(cmd, log, timeout, on_update=None):
+def run_worker(cmd, log, timeout, on_update=None, engine=None):
+    if engine is not None and engine.reuse:
+        return engine.run(cmd, log, timeout, on_update)
     process = subprocess.Popen(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,env=os.environ.copy(),**hidden_options())
     try:
         deadline = time.monotonic() + timeout
@@ -184,7 +186,7 @@ def save_evidence(source, pages, root):
 
 
 def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
-            timeout=1800, ocr="auto", progress=print, on_event=None, retries=1):
+            timeout=1800, ocr="auto", progress=print, on_event=None, retries=1, engine=None):
     configure()
     check_cancelled()
     if tier not in {'basic', 'standard', 'advanced'} or ocr not in {'auto', 'txt', 'ocr'}:
@@ -207,11 +209,13 @@ def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
     stem = re.sub(r"[^\w.-]", "_", source.stem)[:65] or "paper"
     root = Path(output).expanduser().resolve() / f"{stem}-{job_hash}"
     root.mkdir(parents=True, exist_ok=True)
-    with job_lock(root):
-        return _convert_locked(source, root, config, count, selected, timeout, progress, on_event, retries)
+    from .engine import EngineSession
+    with EngineSession() if engine is None else nullcontext(engine) as session:
+        with job_lock(root):
+            return _convert_locked(source, root, config, count, selected, timeout, progress, on_event, retries, session)
 
 
-def _convert_locked(source, root, config, count, selected, timeout, progress, on_event=None, retries=1):
+def _convert_locked(source, root, config, count, selected, timeout, progress, on_event=None, retries=1, engine=None):
     start = time.monotonic()
     report = {
         "schema_version": 1, "status": "running", "config": config,
@@ -220,6 +224,7 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
         "started_at": datetime.now(timezone.utc).isoformat(),
         "chunks": [], "issues": [], "accuracy_verified": False,
         "stage_seconds": {}, "retry_limit": retries,
+        "engine_mode": 'persistent' if engine is not None and engine.reuse else 'isolated',
     }
     previous = root / 'report.json'
     if previous.exists():
@@ -296,7 +301,7 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
                     try:
                         with (chunk / "engine.log").open("w", encoding="utf-8") as log:
                             result = run_worker(cmd, log, timeout,
-                                on_update=lambda event: notify('parsing', **event))
+                                on_update=lambda event: notify('parsing', **event), engine=engine)
                         if result.returncode:
                             raise RuntimeError(f"Parser failed ({result.returncode}). See {chunk / 'engine.log'}")
                         if not cache_valid(chunk, expected_pages=indices):
@@ -305,6 +310,8 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
                         attempt_report['status'] = 'complete'
                         break
                     except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                        if engine is not None:
+                            engine.reset()
                         attempt_report.update(status='failed', error=str(exc))
                         if isinstance(exc, IntegrityError):
                             attempt_report['issues'] = exc.issues

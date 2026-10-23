@@ -38,8 +38,15 @@ def terminate_tree(process):
     if process.poll() is not None:
         return
     if os.name == 'nt':
-        subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+        result = subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **hidden_options(), check=False)
+        if result.returncode and process.poll() is None:
+            # Restricted Windows tokens may not enumerate the tree. A venv
+            # launcher has a different PID from the Python process it hosts.
+            try:
+                os.kill(getattr(process, '_paperbridge_pid', process.pid), signal.SIGTERM)
+            except OSError:
+                pass
     else:
         try:
             os.killpg(process.pid, signal.SIGKILL)
