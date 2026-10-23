@@ -118,7 +118,7 @@ def main():
             lines.append(line)
             if line.startswith('PAPERBRIDGE_EVENT '):
                 event = json.loads(line[len('PAPERBRIDGE_EVENT '):])
-                if event['stage'] == 'parsing' and event.get('chunk') == 2:
+                if event.get('stage') == 'parsing' and event.get('chunk') == 2:
                     cancel.touch()
                     requested = True
         assert requested and process.wait(timeout=30) == 130

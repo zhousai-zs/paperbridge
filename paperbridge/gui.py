@@ -87,10 +87,12 @@ class DesktopApp:
         self.tier = tk.StringVar(root, '标准（推荐）')
         self.pages = tk.StringVar(root, 'all')
         self.ocr = tk.StringVar(root, '自动')
+        self.formula_device = tk.StringVar(root, '自动 GPU（推荐）')
         self.chunk = tk.StringVar(root, '20')
         self.timeout = tk.StringVar(root, '1800')
         self.option_controls = []
-        specs = [('转换模式', self.tier, ['标准（推荐）', '快速']), ('页码', self.pages, None),
+        specs = [('转换模式', self.tier, ['标准（推荐）', '快速']), ('公式加速', self.formula_device,
+                 ['自动 GPU（推荐）', '仅 CPU', '强制 CUDA']), ('页码', self.pages, None),
                  ('OCR', self.ocr, ['自动', '优先文本', '强制 OCR']),
                  ('每段页数', self.chunk, None), ('超时（秒）', self.timeout, None)]
         for i, (label, variable, values) in enumerate(specs):
@@ -181,6 +183,8 @@ class DesktopApp:
             options = Options(tier='standard' if self.tier.get().startswith('标准') else 'basic',
                               pages=self.pages.get().strip() or 'all',
                               ocr={'自动': 'auto', '优先文本': 'txt', '强制 OCR': 'ocr'}[self.ocr.get()],
+                              formula_device={'自动 GPU（推荐）': 'auto', '仅 CPU': 'cpu',
+                                              '强制 CUDA': 'cuda'}[self.formula_device.get()],
                               chunk_size=int(self.chunk.get()), timeout=float(self.timeout.get()))
             options.validate()
             return options

@@ -203,6 +203,7 @@ def convert(source, output, *, tier="standard", pages="all", chunk_size=20,
     config = {
         "source_sha256": digest_file(source), "pages": selected, "tier": tier,
         "ocr": ocr, "chunk_size": chunk_size, "mineru": importlib.metadata.version("mineru"),
+        "formula_device": os.environ.get('PAPERBRIDGE_FORMULA_DEVICE', 'cpu'),
         "paperbridge_schema": 1,
     }
     job_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:12]

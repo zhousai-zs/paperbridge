@@ -19,6 +19,8 @@ def main(argv=None):
     conv.add_argument('--batch-manifest', help=argparse.SUPPRESS)
     conv.add_argument('--engine-mode', choices=['persistent', 'isolated'], default='persistent',
                       help='Reuse models within this batch, or isolate each chunk for comparison')
+    conv.add_argument('--formula-device', choices=['auto', 'cpu', 'cuda'], default='cpu',
+                      help='Formula backend: auto uses CUDA with CPU fallback; default cpu')
     conv.add_argument("-o", "--output", default=str(default_output()))
     conv.add_argument("--tier", choices=["basic", "standard", "advanced"], default="standard")
     conv.add_argument("--pages", default="all", help="1-based page range, e.g. 1-3,5")
@@ -89,6 +91,8 @@ def main(argv=None):
             return 1
     if getattr(args,'offline',False):
         os.environ['MINERU_MODEL_SOURCE']='local'
+    if args.command == 'convert':
+        os.environ['PAPERBRIDGE_FORMULA_DEVICE'] = args.formula_device
     configure()
     if args.command == "doctor":
         import importlib.metadata

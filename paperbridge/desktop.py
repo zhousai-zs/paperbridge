@@ -23,11 +23,13 @@ class Options:
     chunk_size: int = 20
     timeout: float = 1800
     retries: int = 1
+    formula_device: str = 'auto'
 
     def validate(self):
         import math
         import re
-        if self.tier not in {'standard', 'basic'} or self.ocr not in {'auto', 'txt', 'ocr'}:
+        if (self.tier not in {'standard', 'basic'} or self.ocr not in {'auto', 'txt', 'ocr'}
+                or self.formula_device not in {'auto', 'cpu', 'cuda'}):
             raise ValueError('请选择有效的转换模式和 OCR 模式。')
         if self.chunk_size < 1 or not math.isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError('分段页数和超时必须大于 0。')
@@ -159,6 +161,7 @@ class BatchRunner:
             command = module_command('paperbridge.cli', 'convert', '--batch-manifest', manifest,
                                      '-o', output, '--offline', '--progress-json', '--tier', options.tier,
                                      '--pages', options.pages, '--ocr', options.ocr,
+                                     '--formula-device', options.formula_device,
                                      '--chunk-size', options.chunk_size, '--timeout', options.timeout,
                                      '--retries', options.retries)
             env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8',

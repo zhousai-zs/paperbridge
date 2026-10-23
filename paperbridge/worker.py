@@ -49,6 +49,8 @@ def execute(pdf, output, *, tier, pages, ocr='auto', job_index=1):
         return time.monotonic()
     step = stage('loading_engine')
     prepare_engine()
+    from .accelerators import configure_formula_backend, formula_backend_status
+    configure_formula_backend()
     from mineru.parser import parse
     from mineru.parser.writer import FileBasedDataWriter
     from mineru.config import config
@@ -60,6 +62,7 @@ def execute(pdf, output, *, tier, pages, ocr='auto', job_index=1):
         pdf, tier=tier, page_range=pages, ocr_mode=ocr,
     )
     timings['parse_seconds'] = round(time.monotonic() - step, 3)
+    timings['formula_backend'] = formula_backend_status()
     step = stage('saving_assets')
     result.save(FileBasedDataWriter(str(output)))
     timings['save_seconds'] = round(time.monotonic() - step, 3)

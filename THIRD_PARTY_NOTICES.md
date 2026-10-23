@@ -2,7 +2,8 @@
 
 PaperBridge bundles a Python runtime, Tcl/Tk, MinerU 4.0.12, docvortex,
 pypdfium2/PDFium, pypdf, Pillow, ONNX Runtime, mineru-llama-cpp/llama.cpp and their
-runtime dependencies. Each component remains under its upstream license.
+runtime dependencies. The optional GPU add-on also bundles NVIDIA CUDA runtime,
+cuBLAS, cuFFT, cuRAND and cuDNN libraries. Each component remains under its upstream license.
 Available distribution license and notice files are included in `licenses/`.
 The build records model file hashes in `build-info.json`.
 

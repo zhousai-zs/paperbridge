@@ -4,11 +4,11 @@
 
 ## 现在就用
 
-**[下载 Windows x64 客户端（v0.3.1，约 2.07 GB）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.3.1/PaperBridge-0.3.1-windows-x64.zip)** · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
+**[下载 Windows x64 客户端（v0.4.0）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.4.0/PaperBridge-0.4.0-windows-x64.zip)** · [可选 GPU 加速包](https://github.com/zhousai-zs/paperbridge/releases/download/v0.4.0/PaperBridge-0.4.0-gpu-addon-windows-x64.zip) · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
 
 下载上面的完整便携 ZIP，解压后双击 **PaperBridge.exe**：选择一份或多份 PDF、选择输出文件夹、点击“开始转换”。输出位置会记住上次选择；更多选项默认折叠。
 
-仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.3.1-windows-x64.zip`。
+仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.4.0-windows-x64.zip`。NVIDIA 用户如需公式加速，再下载 GPU 加速包，并解压到基础包所在位置、允许合并 `PaperBridge` 文件夹。
 
 便携包包含 Python 运行环境、标准／快速模式模型，使用时无需安装 Python、联网或 API Key。请保留整个程序文件夹，不能单独移动 EXE。操作与错误处理见 [桌面版使用说明](docs/桌面版使用说明.md)。
 
@@ -36,6 +36,9 @@
 
 # 快速模式，数学和中文文字公式需特别核对
 .\.venv\Scripts\paperbridge.exe convert "D:\论文\示例.pdf" --tier basic --offline
+
+# 自动尝试 GPU 公式识别，失败时在报告中记录原因并回退 CPU
+.\.venv\Scripts\paperbridge.exe convert "D:\论文\示例.pdf" --formula-device auto --offline
 
 # 自定义输出目录，递归搜索子目录
 .\.venv\Scripts\paperbridge.exe convert "D:\论文" -o "D:\阅读材料" --recursive --offline
@@ -66,9 +69,9 @@
 
 新结果的 `report.json` 包含 `stage_seconds`、每段的尝试记录和引擎细分耗时；`integrity.json` 记录最终校验。`engine_log_timing` 中推理耗时来自引擎日志，`progress_seconds_approximate` 来自进度条的整数秒，不能当作高精度计时。识别准确性仍需人工对照。
 
-0.3.1 的构建与验收记录见 [发布验收](research/0.3.1发布验收.md)。
+0.4.0 的构建与验收记录见 [发布验收](research/0.4.0发布验收.md)。
 
-当前源码新增批次内模型复用：同批文件顺序处理，跨篇及跨分段复用引擎；失败或超时后重启，仅重试未完成分段。达到 32 段或段末内存达到 4 GiB 时，在下一段开始前回收进程。质量模式、识别分辨率、分段检查点与素材校验保持一致。这项改动尚未包含在上方的 0.3.1 Release 中。
+0.4.0 在批次内复用模型：同批文件顺序处理，跨篇及跨分段复用引擎；失败或超时后重启，仅重试未完成分段。达到 32 段或段末内存达到 4 GiB 时，在下一段开始前回收进程。桌面端默认自动尝试 CUDA 公式识别；未安装 GPU 加速包、没有兼容 NVIDIA GPU 或初始化失败时自动回退 CPU，并把实际后端和原因写入分段计时。
 
 排查或性能对照可给 `convert` 添加 `--engine-mode isolated`，恢复逐段启动引擎；默认是 `persistent`。可用 `scripts/benchmark_engine.py` 对新输出目录进行交错顺序的计时和内容哈希比较，见 [模型复用验收](research/模型复用实现与验收.md)。
 
@@ -155,7 +158,7 @@ New-Item -ItemType Directory -Force .cache | Out-Null
 
 ```powershell
 # 模型已由 setup.ps1 准备好；构建过程不下载模型
-.\.venv\Scripts\python.exe scripts\build_portable.py --models .cache\mineru\models
+.\.venv\Scripts\python.exe scripts\build_portable.py --models .cache\mineru\models --gpu-runtime .local\gpu-ort-overlay
 
 # 无模型的原生窗口检查及截图
 .\.venv\Scripts\python.exe scripts\check_desktop.py
@@ -166,6 +169,6 @@ New-Item -ItemType Directory -Force .cache | Out-Null
 .\.venv\Scripts\python.exe scripts\check_portable.py --bundle dist\PaperBridge --corpus tests\corpus
 ```
 
-生成 `dist/PaperBridge/`、版本 ZIP 及 SHA-256 文件，包内 `build-info.json` 记录提交、EXE 和模型哈希。源码归档使用 `scripts/package_source.py`，只包含 Git 已跟踪文件。
+生成 `dist/PaperBridge/`、基础 ZIP、可选 GPU 加速 ZIP及各自 SHA-256 文件。完整本地目录已含 GPU 运行库；GitHub 的基础包可独立使用 CPU，叠加 GPU 包后启用 CUDA。包内 `build-info.json` 记录提交、EXE、模型和 GPU 文件清单。源码归档使用 `scripts/package_source.py`，只包含 Git 已跟踪文件。
 
 CI 在 Windows 与 Linux 虚拟显示环境运行无模型测试及 wheel 检查；不启动 Web 或下载识别模型。真实模型检查清除开发环境变量、收紧 PATH 并使用不可达代理，但**不等同于全新无 Python 机器或操作系统级断网测试**；全新机器验收应单独记录。

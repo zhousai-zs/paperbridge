@@ -43,7 +43,8 @@ def test_selection_preserves_order_and_deduplicates(tmp_path):
 
 
 @pytest.mark.parametrize('options', [Options(chunk_size=0), Options(timeout=float('nan')),
-                                          Options(timeout=0), Options(pages='1;exit')])
+                                          Options(timeout=0), Options(pages='1;exit'),
+                                          Options(formula_device='other')])
 def test_options_reject_invalid_values(options):
     with pytest.raises(ValueError):
         options.validate()
@@ -86,6 +87,7 @@ for index,source in enumerate(files,1):
     assert len(json.loads((output / 'batch-report.json').read_text(encoding='utf-8'))) == 3
     assert all(Path(r['log']).is_file() for r in runner.results)
     assert len(calls) == 1
+    assert calls[0][calls[0].index('--formula-device') + 1] == 'auto'
     assert [e['source'] for e in events if e['kind'] == 'started'] == [str(tmp_path / p) for p in ('bad.pdf', 'review.pdf', 'good.pdf')]
 
 
