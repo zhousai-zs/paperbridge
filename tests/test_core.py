@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
+import os
 import subprocess
+import sys
 
 import pytest
 from reportlab.pdfgen import canvas
@@ -36,6 +38,32 @@ def test_lock_blocks_concurrent_writer_and_releases(tmp_path):
             with job_lock(tmp_path):
                 pass
     assert not (tmp_path / '.lock').exists()
+
+
+def test_lock_left_by_dead_owner_is_reclaimed(tmp_path):
+    finished = subprocess.Popen([sys.executable, '-c', ''])
+    finished.wait()
+    (tmp_path / '.lock').write_text(str(finished.pid))
+    with job_lock(tmp_path):
+        assert (tmp_path / '.lock').read_text() == str(os.getpid())
+    assert not (tmp_path / '.lock').exists()
+
+
+@pytest.mark.parametrize('content', ['', 'not-a-pid'])
+def test_unidentifiable_lock_is_kept(tmp_path, content):
+    (tmp_path / '.lock').write_text(content)
+    with pytest.raises(RuntimeError, match='lock needs inspection'):
+        with job_lock(tmp_path):
+            pass
+    assert (tmp_path / '.lock').read_text() == content
+
+
+def test_live_owner_keeps_lock(tmp_path):
+    (tmp_path / '.lock').write_text(str(os.getpid()))
+    with pytest.raises(RuntimeError, match='lock needs inspection'):
+        with job_lock(tmp_path):
+            pass
+    assert (tmp_path / '.lock').exists()
 
 
 @pytest.fixture
@@ -80,6 +108,11 @@ def test_encrypted_and_invalid_pdf_rejected(pdf, tmp_path):
     writer.write(encrypted)
     with pytest.raises(ValueError, match='Encrypted'):
         pdf_details(encrypted)
+    permission_only = PdfWriter(clone_from=pdf)
+    permission_only.encrypt(user_password='', owner_password='secret')
+    restricted = tmp_path / 'restricted.pdf'
+    permission_only.write(restricted)
+    assert pdf_details(restricted) == 1
     invalid = tmp_path / 'bad.pdf'
     invalid.write_text('not a PDF')
     with pytest.raises(Exception):

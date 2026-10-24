@@ -1,4 +1,6 @@
 import importlib
+import sys
+import types
 
 import pytest
 
@@ -12,6 +14,14 @@ def fresh(monkeypatch):
     return module
 
 
+@pytest.fixture
+def cpu_only_runtime(monkeypatch):
+    # Model-free CI does not install onnxruntime; only provider discovery is exercised.
+    runtime = types.SimpleNamespace(get_available_providers=lambda: ['CPUExecutionProvider'])
+    monkeypatch.setitem(sys.modules, 'onnxruntime', runtime)
+    return runtime
+
+
 def test_formula_device_defaults_to_cpu_and_rejects_unknown(fresh, monkeypatch):
     assert fresh.requested_formula_device() == 'cpu'
     monkeypatch.setenv('PAPERBRIDGE_FORMULA_DEVICE', 'other')
@@ -19,17 +29,13 @@ def test_formula_device_defaults_to_cpu_and_rejects_unknown(fresh, monkeypatch):
         fresh.requested_formula_device()
 
 
-def test_auto_falls_back_when_cuda_provider_is_unavailable(fresh, monkeypatch):
-    import onnxruntime
-    monkeypatch.setattr(onnxruntime, 'get_available_providers', lambda: ['CPUExecutionProvider'])
+def test_auto_falls_back_when_cuda_provider_is_unavailable(fresh, cpu_only_runtime):
     status = fresh.configure_formula_backend('auto')
     assert status['actual'] == 'cpu'
     assert 'unavailable' in status['reason']
 
 
-def test_forced_cuda_reports_missing_provider(fresh, monkeypatch):
-    import onnxruntime
-    monkeypatch.setattr(onnxruntime, 'get_available_providers', lambda: ['CPUExecutionProvider'])
+def test_forced_cuda_reports_missing_provider(fresh, cpu_only_runtime):
     with pytest.raises(RuntimeError, match='unavailable'):
         fresh.configure_formula_backend('cuda')
 
