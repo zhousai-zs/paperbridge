@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 
-from .core import write_json
+from .core import archive_batch_report, write_json
 from .environment import ROOT, documents_dir, state_dir
 from .processes import hidden_options, module_command, terminate_tree
 
@@ -169,6 +169,7 @@ class BatchRunner:
             with self.lock:
                 if self.cancelled.is_set():
                     return
+                archive_batch_report(output)
                 process = subprocess.Popen(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                            text=True, encoding='utf-8', errors='replace', **hidden_options())
@@ -240,8 +241,9 @@ class BatchRunner:
                 self.process = None
             manifest.unlink(missing_ok=True)
             self.cancel_file.unlink(missing_ok=True)
-            try:
-                write_json(output / 'batch-report.json', self.results)
-            except OSError as exc:
-                self.events.put({'kind': 'error', 'error': str(exc)})
+            if process:
+                try:
+                    write_json(output / 'batch-report.json', self.results)
+                except OSError as exc:
+                    self.events.put({'kind': 'error', 'error': str(exc)})
             self.events.put({'kind': 'done', 'results': list(self.results), 'stopped': self.cancelled.is_set()})

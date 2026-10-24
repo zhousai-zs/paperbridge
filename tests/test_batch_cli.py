@@ -43,3 +43,17 @@ def test_cancel_emits_stopped_result_and_does_not_start_next_document(tmp_path, 
     assert main(['convert', str(tmp_path / 'a.pdf'), str(tmp_path / 'b.pdf'), '-o', str(output), '--progress-json']) == 130
     assert len(calls) == 1
     assert json.loads((output / 'batch-report.json').read_text())[-1]['status'] == 'stopped'
+
+
+def test_new_batch_keeps_previous_batch_report_in_history(tmp_path, monkeypatch):
+    monkeypatch.setenv('PAPERBRIDGE_CACHE', str(tmp_path / 'cache'))
+    monkeypatch.setattr('paperbridge.core.convert',
+                        lambda source, output, **kwargs: (Path(output) / source.stem, {'status': 'complete'}))
+    output = tmp_path / 'out'
+    assert main(['convert', str(tmp_path / 'first.pdf'), '-o', str(output)]) == 0
+    assert main(['convert', str(tmp_path / 'second.pdf'), '-o', str(output)]) == 0
+    current = json.loads((output / 'batch-report.json').read_text(encoding='utf-8'))
+    assert [Path(r['source']).name for r in current] == ['second.pdf']
+    archived = list((output / 'history').glob('batch-report-*.json'))
+    assert len(archived) == 1
+    assert Path(json.loads(archived[0].read_text(encoding='utf-8'))[0]['source']).name == 'first.pdf'

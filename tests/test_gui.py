@@ -1,8 +1,9 @@
 import queue
 import sys
-import tkinter as tk
 
 import pytest
+
+tk = pytest.importorskip('tkinter')
 
 from paperbridge.gui import DesktopApp
 
