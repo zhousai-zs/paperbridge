@@ -4,11 +4,11 @@
 
 ## 现在就用
 
-**[下载 Windows x64 客户端（v0.4.0）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.4.0/PaperBridge-0.4.0-windows-x64.zip)** · [可选 GPU 加速包](https://github.com/zhousai-zs/paperbridge/releases/download/v0.4.0/PaperBridge-0.4.0-gpu-addon-windows-x64.zip) · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
+**[下载 Windows x64 客户端（v0.4.1）](https://github.com/zhousai-zs/paperbridge/releases/download/v0.4.1/PaperBridge-0.4.1-windows-x64.zip)** · [可选 GPU 加速包](https://github.com/zhousai-zs/paperbridge/releases/download/v0.4.1/PaperBridge-0.4.1-gpu-addon-windows-x64.zip) · [Release 说明与校验文件](https://github.com/zhousai-zs/paperbridge/releases/latest)
 
 下载上面的完整便携 ZIP，解压后双击 **PaperBridge.exe**：选择一份或多份 PDF、选择输出文件夹、点击“开始转换”。输出位置会记住上次选择；更多选项默认折叠。
 
-仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.4.0-windows-x64.zip`。NVIDIA 用户如需公式加速，再下载 GPU 加速包，并解压到基础包所在位置、允许合并 `PaperBridge` 文件夹。
+仓库文件列表和 GitHub 自动生成的 “Source code” 压缩包提供源码；客户端请下载 Release 中的 `PaperBridge-0.4.1-windows-x64.zip`。NVIDIA 用户如需公式加速，再下载 GPU 加速包，并解压到基础包所在位置、允许合并 `PaperBridge` 文件夹。
 
 便携包包含 Python 运行环境、标准／快速模式模型，使用时无需安装 Python、联网或 API Key。请保留整个程序文件夹，不能单独移动 EXE。操作与错误处理见 [桌面版使用说明](docs/桌面版使用说明.md)。
 
@@ -69,7 +69,7 @@
 
 新结果的 `report.json` 包含 `stage_seconds`、每段的尝试记录和引擎细分耗时；`integrity.json` 记录最终校验。`engine_log_timing` 中推理耗时来自引擎日志，`progress_seconds_approximate` 来自进度条的整数秒，不能当作高精度计时。识别准确性仍需人工对照。
 
-0.4.0 的构建与验收记录见 [发布验收](research/0.4.0发布验收.md)。
+0.4.1 修复只限制打印／复制、打开无需密码的 PDF，回收已退出进程留下的结果锁，并在新一批开始时把上一份 `batch-report.json` 移入 `history/`。客户端见 [0.4.1 Release](https://github.com/zhousai-zs/paperbridge/releases/tag/v0.4.1)。0.4.0 的构建与验收记录见 [发布验收](research/0.4.0发布验收.md)。
 
 0.4.0 在批次内复用模型：同批文件顺序处理，跨篇及跨分段复用引擎；失败或超时后重启，仅重试未完成分段。达到 32 段或段末内存达到 4 GiB 时，在下一段开始前回收进程。桌面端默认自动尝试 CUDA 公式识别；未安装 GPU 加速包、没有兼容 NVIDIA GPU 或初始化失败时自动回退 CPU，并把实际后端和原因写入分段计时。
 
