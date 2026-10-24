@@ -41,6 +41,15 @@ def write_json(path, value):
             pass
 
 
+def archive_batch_report(output):
+    """Move the previous batch summary into history/ before a new batch reuses the folder."""
+    current = Path(output) / 'batch-report.json'
+    if current.is_file():
+        history = current.parent / 'history'
+        history.mkdir(exist_ok=True)
+        current.replace(history / f'batch-report-{time.time_ns()}.json')
+
+
 def digest_file(path):
     h = hashlib.sha256()
     with path.open("rb") as handle:
