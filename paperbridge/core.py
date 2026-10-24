@@ -17,7 +17,8 @@ from .quality import check_markdown, image_references, flatten_text
 from .checkpoint import cache_valid
 from .integrity import IntegrityError, chunk_issues, validate_bundle
 from .performance import log_progress, summarize_log
-from .processes import check_cancelled, ConversionCancelled, hidden_options, module_command, terminate_tree
+from .processes import (check_cancelled, ConversionCancelled, hidden_options, module_command,
+                        process_alive, terminate_tree)
 
 
 def write_json(path, value):
@@ -66,10 +67,20 @@ def select_pages(spec, count):
 @contextmanager
 def job_lock(root):
     path = root / ".lock"
-    try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        raise RuntimeError(f"Job already running, or interrupted lock needs inspection: {path}") from None
+    for attempt in range(2):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            # Reclaim a lock left by a crashed or killed coordinator; keep any lock
+            # whose owner is alive or cannot be identified.
+            try:
+                owner = int(path.read_text(encoding='utf-8').strip())
+            except (OSError, ValueError):
+                owner = None
+            if attempt or owner is None or process_alive(owner):
+                raise RuntimeError(f"Job already running, or interrupted lock needs inspection: {path}") from None
+            path.unlink(missing_ok=True)
     try:
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
@@ -86,7 +97,8 @@ def rebase_images(markdown, prefix):
 def pdf_details(path, password=None):
     from pypdf import PdfReader
     reader = PdfReader(str(path))
-    if reader.is_encrypted and (not password or not reader.decrypt(password)):
+    # Permission-only PDFs (owner password, empty user password) open without a prompt.
+    if reader.is_encrypted and not reader.decrypt(password or ''):
         raise ValueError("Encrypted PDF: supply an unencrypted copy before conversion.")
     if not reader.pages:
         raise ValueError("PDF has no pages")
