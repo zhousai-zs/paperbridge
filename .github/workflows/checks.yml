@@ -1,7 +1,7 @@
 name: Core and desktop checks
 on:
   push:
-    branches: [main, 'codex/desktop-gui']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:

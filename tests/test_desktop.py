@@ -79,12 +79,15 @@ for index,source in enumerate(files,1):
         return [sys.executable, '-u', '-c', script, str(args[args.index('--batch-manifest') + 1])]
     monkeypatch.setattr('paperbridge.desktop.module_command', command)
     output = validate_output(tmp_path / 'outputs')
+    (output / 'batch-report.json').write_text('[{"source": "previous.pdf"}]', encoding='utf-8')
     runner = BatchRunner()
     runner.start([tmp_path / p for p in ('bad.pdf', 'review.pdf', 'good.pdf')], output, Options())
     events = wait_done(runner)
     assert [r['status'] for r in runner.results] == ['failed', 'needs_review', 'complete']
     assert any(e.get('completed_pages') == 2 for e in events)
     assert len(json.loads((output / 'batch-report.json').read_text(encoding='utf-8'))) == 3
+    archived = list((output / 'history').glob('batch-report-*.json'))
+    assert [json.loads(a.read_text(encoding='utf-8')) for a in archived] == [[{'source': 'previous.pdf'}]]
     assert all(Path(r['log']).is_file() for r in runner.results)
     assert len(calls) == 1
     assert calls[0][calls[0].index('--formula-device') + 1] == 'auto'
