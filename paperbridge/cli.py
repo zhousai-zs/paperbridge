@@ -133,6 +133,10 @@ def main(argv=None):
         if args.progress_json:
             print('PAPERBRIDGE_EVENT ' + json.dumps(event), flush=True)
 
+    from .core import archive_batch_report, write_json
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
+    archive_batch_report(output)
     from .engine import EngineSession
     from .processes import check_cancelled, ConversionCancelled
     with EngineSession(reuse=args.engine_mode == 'persistent') as engine:
@@ -170,9 +174,6 @@ def main(argv=None):
             emit({'event': 'document_result', **result})
             if cancelled:
                 break
-    output = Path(args.output)
-    output.mkdir(parents=True, exist_ok=True)
-    from .core import write_json
     write_json(output / "batch-report.json", results)
     return 130 if cancelled else 1 if failures else 2 if review else 0
 
