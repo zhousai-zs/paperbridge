@@ -42,6 +42,25 @@ def test_worker_timeout_is_bounded(tmp_path):
         run_worker([sys.executable, '-c', 'import time; time.sleep(60)'], log, 0.2)
 
 
+@pytest.mark.parametrize('error_type', [OSError, ValueError, RuntimeError])
+def test_progress_error_stops_running_worker_without_status(tmp_path, monkeypatch, error_type):
+    processes = []
+    popen = subprocess.Popen
+
+    def start(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    def update(event):
+        raise error_type('background render failed')
+
+    monkeypatch.setattr('paperbridge.core.subprocess.Popen', start)
+    with (tmp_path / 'log').open('w') as log, pytest.raises(error_type, match='background render failed'):
+        run_worker([sys.executable, '-c', 'import time; time.sleep(60)'], log, 30, on_update=update)
+    assert processes[0].poll() is not None
+
+
 def test_export_keeps_legacy_revisions_and_assets(tmp_path):
     root = tmp_path / 'result'
     (root / 'pages').mkdir(parents=True)

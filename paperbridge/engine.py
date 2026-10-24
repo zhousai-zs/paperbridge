@@ -16,15 +16,16 @@ from .processes import check_cancelled, hidden_options, module_command, terminat
 def worker_update(log, on_update):
     if not on_update:
         return
+    event = {}
     try:
         event = json.loads(Path(log.name).with_name('worker-status.json').read_text(encoding='utf-8'))
         if event.get('worker_step') == 'inference':
             with Path(log.name).open('rb') as reader:
                 reader.seek(max(0, reader.seek(0, 2) - 8192))
                 event.update(log_progress(reader.read().decode('utf-8', errors='replace')))
-        on_update(event)
     except (OSError, ValueError):
         pass
+    on_update(event)
 
 
 class EngineSession:

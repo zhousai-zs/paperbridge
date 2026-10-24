@@ -158,3 +158,155 @@ def test_cancel_during_parsing_preserves_lock_cleanup(pdf, tmp_path, monkeypatch
     target = next((tmp_path / 'out').iterdir())
     assert json.loads((target / 'report.json').read_text(encoding='utf-8'))['status'] == 'stopped'
     assert not (target / '.lock').exists()
+
+
+def test_page_rendering_overlaps_with_parsing(pdf, tmp_path, monkeypatch):
+    import threading
+    from paperbridge.checkpoint import seal_chunk
+    render_started = threading.Event()
+    worker_seen_render = threading.Event()
+
+    def slow_render(source, pages, output):
+        render_started.set()
+        assert worker_seen_render.wait(timeout=5)
+
+    def worker(command, log, timeout, **kwargs):
+        assert render_started.wait(timeout=5)
+        worker_seen_render.set()
+        root = Path(command[5])
+        (root / 'middle_json.json').write_text('{"pages": [{"page_idx": 0, "blocks": []}]}')
+        (root / 'structured_content.json').write_text('{}')
+        (root / 'markdown.md').write_text('Example text')
+        seal_chunk(root)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr('paperbridge.core.render_pages', slow_render)
+    monkeypatch.setattr('paperbridge.core.run_worker', worker)
+    monkeypatch.setattr('paperbridge.core.assemble', lambda *args: None)
+    monkeypatch.setattr('paperbridge.core.validate_bundle', lambda *args: {'passed': True, 'assets_passed': True, 'issues': []})
+    target, report = convert(pdf, tmp_path / 'out')
+    assert report['status'] == 'complete'
+    assert not (target / '.lock').exists()
+
+
+def test_parallel_render_pages_and_save_evidence(tmp_path):
+    from paperbridge.core import render_pages, save_evidence
+    from paperbridge.integrity import check_images
+    source = tmp_path / 'multi.pdf'
+    c = canvas.Canvas(str(source))
+    for i in range(6):
+        c.drawString(50, 700, f'Page {i + 1}')
+        c.showPage()
+    c.save()
+    pages_dir = tmp_path / 'pages'
+    render_pages(source, list(range(6)), pages_dir)
+    expected = [f'page-{i + 1:04}.png' for i in range(6)]
+    assert check_images(expected, pages_dir) == []
+    # Re-running when all pages are valid skips re-rendering and keeps files intact.
+    render_pages(source, list(range(6)), pages_dir)
+    assert check_images(expected, pages_dir) == []
+    pages_meta = [
+        {'page_idx': i, 'blocks': [
+            {'type': 'equation', 'index': 1, 'bbox': [0.1, 0.1, 0.5, 0.2], 'content': f'x_{i}'},
+            {'type': 'table', 'index': 2, 'bbox': [0.1, 0.3, 0.8, 0.6], 'content': f't_{i}'},
+        ]}
+        for i in range(4)
+    ]
+    evidence = save_evidence(source, pages_meta, tmp_path)
+    assert len(evidence) == 8
+    assert check_images([item['image'] for item in evidence], tmp_path) == []
+
+
+@pytest.mark.parametrize('error_type', [OSError, ValueError, RuntimeError])
+def test_background_render_failure_interrupts_parser_without_retry(pdf, tmp_path, monkeypatch, error_type):
+    import threading
+    import time
+    started = threading.Event()
+    calls = []
+
+    def render(*args):
+        assert started.wait(5)
+        raise error_type('page render failed')
+
+    def worker(command, log, timeout, on_update, **kwargs):
+        calls.append(command)
+        started.set()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            on_update({'worker_step': 'inference'})
+            time.sleep(.01)
+        pytest.fail('Background render failure did not interrupt parsing')
+
+    assembled = []
+    monkeypatch.setattr('paperbridge.core.render_pages', render)
+    monkeypatch.setattr('paperbridge.core.run_worker', worker)
+    monkeypatch.setattr('paperbridge.core.assemble', lambda *args: assembled.append(True))
+    with pytest.raises(error_type, match='page render failed'):
+        convert(pdf, tmp_path / 'out')
+    assert len(calls) == 1
+    assert not assembled
+    target = next((tmp_path / 'out').iterdir())
+    report = json.loads((target / 'report.json').read_text(encoding='utf-8'))
+    assert report['status'] == 'failed'
+    assert 'page render failed' in report['issues'][-1]['detail']
+    assert not (target / '.lock').exists()
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_parser_failure_or_cancel_joins_background_renderer(pdf, tmp_path, monkeypatch, cancelled):
+    import threading
+    import time
+    from paperbridge.core import _check_render_cancelled
+    from paperbridge.processes import ConversionCancelled
+    started, finished = threading.Event(), threading.Event()
+
+    def render(*args):
+        started.set()
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                _check_render_cancelled()
+                time.sleep(.01)
+            pytest.fail('Background renderer was not stopped')
+        finally:
+            finished.set()
+
+    error_type = ConversionCancelled if cancelled else RuntimeError
+
+    def worker(*args, **kwargs):
+        assert started.wait(5)
+        raise error_type('parser stopped')
+
+    monkeypatch.setattr('paperbridge.core.render_pages', render)
+    monkeypatch.setattr('paperbridge.core.run_worker', worker)
+    with pytest.raises(error_type, match='parser stopped'):
+        convert(pdf, tmp_path / 'out', retries=0)
+    assert finished.is_set()
+    target = next((tmp_path / 'out').iterdir())
+    report = json.loads((target / 'report.json').read_text(encoding='utf-8'))
+    assert report['status'] == ('stopped' if cancelled else 'failed')
+    assert not (target / '.lock').exists()
+
+
+@pytest.mark.parametrize('evidence', [False, True])
+def test_image_save_failure_closes_images(pdf, tmp_path, monkeypatch, evidence):
+    from PIL import Image
+    from paperbridge.core import render_pages, save_evidence
+    images = []
+
+    def fail_save(image, *args, **kwargs):
+        images.append(image)
+        raise OSError('image save failed')
+
+    monkeypatch.setattr(Image.Image, 'save', fail_save)
+    with pytest.raises(OSError, match='image save failed'):
+        if evidence:
+            save_evidence(pdf, [{'page_idx': 0, 'blocks': [
+                {'type': 'equation', 'bbox': [.1, .1, .5, .2], 'content': 'x'},
+            ]}], tmp_path)
+        else:
+            render_pages(pdf, [0], tmp_path / 'pages')
+    assert images
+    for image in images:
+        with pytest.raises(ValueError, match='closed image'):
+            image.getpixel((0, 0))

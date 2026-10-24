@@ -27,28 +27,35 @@ def structure_references(value):
         yield from image_references(value)
 
 
+def _check_one_image(ref, root):
+    from PIL import Image
+    parsed = urlsplit(ref)
+    if parsed.scheme or parsed.netloc:
+        return {'code': 'nonlocal_image', 'detail': ref}
+    path = (root / unquote(parsed.path)).resolve()
+    if not path.is_relative_to(root):
+        return {'code': 'image_outside_bundle', 'detail': ref}
+    if not path.is_file() or not path.stat().st_size:
+        return {'code': 'missing_image', 'detail': ref}
+    try:
+        with Image.open(path) as image:
+            image.load()
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        return {'code': 'unreadable_image', 'detail': ref, 'error': str(exc)}
+    return None
+
+
 def check_images(refs, root):
     """Read all pixels, since verify() alone can miss truncated JPEG data."""
-    from PIL import Image
     root = Path(root).resolve()
-    issues = []
-    for ref in sorted(set(refs)):
-        parsed = urlsplit(ref)
-        if parsed.scheme or parsed.netloc:
-            issues.append({'code': 'nonlocal_image', 'detail': ref})
-            continue
-        path = (root / unquote(parsed.path)).resolve()
-        if not path.is_relative_to(root):
-            issues.append({'code': 'image_outside_bundle', 'detail': ref})
-        elif not path.is_file() or not path.stat().st_size:
-            issues.append({'code': 'missing_image', 'detail': ref})
-        else:
-            try:
-                with Image.open(path) as image:
-                    image.load()
-            except (OSError, ValueError, Image.DecompressionBombError) as exc:
-                issues.append({'code': 'unreadable_image', 'detail': ref, 'error': str(exc)})
-    return issues
+    unique = sorted(set(refs))
+    if len(unique) <= 2:
+        return [issue for ref in unique if (issue := _check_one_image(ref, root)) is not None]
+    from concurrent.futures import ThreadPoolExecutor
+    import os
+    workers = max(1, min(4, os.cpu_count() or 1, len(unique)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [issue for issue in pool.map(lambda ref: _check_one_image(ref, root), unique) if issue is not None]
 
 
 def chunk_issues(root, expected_pages=None):

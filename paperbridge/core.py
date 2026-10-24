@@ -1,3 +1,5 @@
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import signal
 
@@ -128,39 +131,99 @@ def run_worker(cmd, log, timeout, on_update=None, engine=None):
             if on_update and time.monotonic() >= next_update:
                 next_update = time.monotonic() + 1
                 status = Path(log.name).parent / 'worker-status.json'
+                event = {}
                 try:
                     event = json.loads(status.read_text(encoding='utf-8'))
                     if event.get('worker_step') == 'inference':
                         with Path(log.name).open('rb') as reader:
                             reader.seek(max(0, reader.seek(0, 2) - 8192))
                             event.update(log_progress(reader.read().decode('utf-8', errors='replace')))
-                    on_update(event)
                 except (OSError, ValueError):
                     pass
+                on_update(event)
             time.sleep(0.1)
         check_cancelled()
         return subprocess.CompletedProcess(cmd, process.returncode)
-    except (subprocess.TimeoutExpired, KeyboardInterrupt, ConversionCancelled):
+    except BaseException:
         terminate_tree(process)
         raise
 
 
+_PDFIUM_LOCK = threading.Lock()
+_RENDER_ABORT = threading.local()
+
+
+def _render_worker_count():
+    return max(1, min(4, os.cpu_count() or 1))
+
+
+def _check_render_cancelled():
+    check_cancelled()
+    event = getattr(_RENDER_ABORT, 'event', None)
+    if event is not None and event.is_set():
+        raise ConversionCancelled('Page rendering aborted.')
+
+
+def _save_image(image, path):
+    try:
+        image.save(path)
+    finally:
+        image.close()
+
+
+def _drain_futures(pending, limit=0):
+    while len(pending) > limit:
+        future, _ = pending.popleft()
+        future.result()
+
+
+def _cancel_futures(pending):
+    while pending:
+        future, image = pending.popleft()
+        if future.cancel():
+            image.close()
+
+
 def render_pages(source, pages, output):
     import pypdfium2 as pdfium
+    output = Path(output)
     output.mkdir(exist_ok=True)
-    with pdfium.PdfDocument(str(source)) as doc:
-        for idx in pages:
-            check_cancelled()
-            path = output / f"page-{idx + 1:04}.png"
-            if path.exists():
-                from .integrity import check_images
-                if not check_images([path.name], output):
-                    continue
-            page = doc[idx]
-            bitmap = page.render(scale=1.5)
-            bitmap.to_pil().save(path)
-            bitmap.close()
-            page.close()
+    _check_render_cancelled()
+    from .integrity import check_images
+    existing = [f"page-{idx + 1:04}.png" for idx in pages if (output / f"page-{idx + 1:04}.png").exists()]
+    invalid = {issue['detail'] for issue in check_images(existing, output)} if existing else set()
+    todo = [idx for idx in pages if f"page-{idx + 1:04}.png" not in existing or f"page-{idx + 1:04}.png" in invalid]
+    if not todo:
+        return
+    workers = _render_worker_count()
+    pending = deque()
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(source))
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            try:
+                for idx in todo:
+                    _check_render_cancelled()
+                    path = output / f"page-{idx + 1:04}.png"
+                    _drain_futures(pending, workers * 2 - 1)
+                    with _PDFIUM_LOCK:
+                        page = doc[idx]
+                        try:
+                            bitmap = page.render(scale=1.5)
+                            try:
+                                image = bitmap.to_pil()
+                            finally:
+                                bitmap.close()
+                        finally:
+                            page.close()
+                    pending.append((pool.submit(_save_image, image, path), image))
+                _drain_futures(pending)
+            except BaseException:
+                _cancel_futures(pending)
+                raise
+    finally:
+        with _PDFIUM_LOCK:
+            doc.close()
 
 
 def rebase_structure(value, prefix):
@@ -180,28 +243,51 @@ def save_evidence(source, pages, root):
     evidence = []
     directory = root / 'evidence'
     directory.mkdir(exist_ok=True)
-    with pdfium.PdfDocument(str(source)) as doc:
-        for page in pages:
-            visual = [b for b in page['blocks'] if b['type'] in ('equation', 'table') and b.get('bbox')]
-            if not visual:
-                continue
-            pdfpage = doc[page['page_idx']]
-            bitmap = pdfpage.render(scale=2.5)
-            raster = bitmap.to_pil()
-            for n, block in enumerate(visual):
-                x0,y0,x1,y1 = block['bbox']
-                if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
-                    continue
-                box = (max(0,int(x0*raster.width)-3), max(0,int(y0*raster.height)-3),
-                       min(raster.width,int(x1*raster.width)+4), min(raster.height,int(y1*raster.height)+4))
-                relative = f"evidence/page-{page['page_idx']+1:04}-{block['type']}-{n:03}.png"
-                raster.crop(box).save(root/relative)
-                evidence.append({'page':page['page_idx']+1, 'type':block['type'],
-                                 'block_index':block.get('index'), 'bbox':block['bbox'], 'image':relative,
-                                 'recognized_content': flatten_text(block.get('content', ''))})
-            raster.close()
-            bitmap.close()
-            pdfpage.close()
+    workers = _render_worker_count()
+    pending = deque()
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(source))
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            try:
+                for page in pages:
+                    check_cancelled()
+                    visual = [b for b in page['blocks'] if b['type'] in ('equation', 'table') and b.get('bbox')]
+                    if not visual:
+                        continue
+                    with _PDFIUM_LOCK:
+                        pdfpage = doc[page['page_idx']]
+                        try:
+                            bitmap = pdfpage.render(scale=2.5)
+                            try:
+                                raster = bitmap.to_pil()
+                            finally:
+                                bitmap.close()
+                        finally:
+                            pdfpage.close()
+                    try:
+                        for n, block in enumerate(visual):
+                            x0, y0, x1, y1 = block['bbox']
+                            if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+                                continue
+                            box = (max(0, int(x0 * raster.width) - 3), max(0, int(y0 * raster.height) - 3),
+                                   min(raster.width, int(x1 * raster.width) + 4), min(raster.height, int(y1 * raster.height) + 4))
+                            relative = f"evidence/page-{page['page_idx']+1:04}-{block['type']}-{n:03}.png"
+                            _drain_futures(pending, workers * 2 - 1)
+                            crop = raster.crop(box)
+                            pending.append((pool.submit(_save_image, crop, root / relative), crop))
+                            evidence.append({'page': page['page_idx'] + 1, 'type': block['type'],
+                                             'block_index': block.get('index'), 'bbox': block['bbox'], 'image': relative,
+                                             'recognized_content': flatten_text(block.get('content', ''))})
+                    finally:
+                        raster.close()
+                _drain_futures(pending)
+            except BaseException:
+                _cancel_futures(pending)
+                raise
+    finally:
+        with _PDFIUM_LOCK:
+            doc.close()
     write_json(root / 'evidence.json', evidence)
     return evidence
 
@@ -268,6 +354,7 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
 
     def notify(stage, **extra):
         nonlocal current_stage
+        _check_background_render()
         if current_stage != stage:
             record_stage()
             current_stage = stage
@@ -281,14 +368,37 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
                       "elapsed_seconds": report['elapsed_seconds'],
                       **extra})
 
+    render_abort = threading.Event()
+    render_pool = None
+    render_future = None
+
+    def _check_background_render():
+        if render_future is not None and render_future.done():
+            render_future.result()
+
+    def _start_background_render():
+        nonlocal render_pool, render_future
+        if render_future is not None:
+            return
+        def _task():
+            _RENDER_ABORT.event = render_abort
+            try:
+                render_pages(snapshot, selected, root / "pages")
+            finally:
+                _RENDER_ABORT.event = None
+        render_pool = ThreadPoolExecutor(max_workers=1)
+        render_future = render_pool.submit(_task)
+
     try:
         notify("preparing", completed_pages=0)
         if not snapshot.exists():
             shutil.copyfile(source, snapshot)
         if digest_file(snapshot) != config['source_sha256']:
             raise RuntimeError(f'Source changed during conversion or snapshot was modified: {snapshot}')
+        _start_background_render()
         for number, indices in enumerate(chunks):
             check_cancelled()
+            _check_background_render()
             notify("parsing", current_pages=[i + 1 for i in indices],
                    chunk=number + 1, total_chunks=len(chunks))
             chunk = root / "chunks" / f"{number:04}"
@@ -304,6 +414,7 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
                        '--tier', config['tier'], '--pages', page_spec, '--ocr', config['ocr'])
                 for attempt in range(retries + 1):
                     check_cancelled()
+                    _check_background_render()
                     # Archive failed/invalid output so stale images cannot satisfy a new attempt.
                     if any(chunk.iterdir()):
                         archive = root / 'history' / f'chunk-{number:04}-{time.time_ns()}'
@@ -332,6 +443,8 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
                         attempt_report['status'] = 'complete'
                         break
                     except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                        # A failed renderer cannot be recovered by retrying the parser.
+                        _check_background_render()
                         if engine is not None:
                             engine.reset()
                         attempt_report.update(status='failed', error=str(exc))
@@ -358,7 +471,12 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
         check_cancelled()
         assemble(root, selected, report)
         notify("rendering")
-        render_pages(snapshot, selected, root / "pages")
+        if render_future is not None:
+            render_pool.shutdown(wait=True)
+            render_pool = None
+            render_future.result()
+        else:
+            render_pages(snapshot, selected, root / "pages")
         check_cancelled()
         notify('validating')
         report['integrity'] = validate_bundle(root, report)
@@ -371,11 +489,19 @@ def _convert_locked(source, root, config, count, selected, timeout, progress, on
         report["status"] = "needs_review" if report["issues"] else "complete"
         notify("finished", status=report["status"])
     except (Exception, KeyboardInterrupt) as exc:
+        render_abort.set()
+        if render_pool is not None:
+            render_pool.shutdown(wait=True, cancel_futures=True)
+            render_pool = None
         report["status"] = 'stopped' if isinstance(exc, ConversionCancelled) else 'failed'
         report['stage'] = report['status']
         report["issues"].append({"code": "conversion_failed", "detail": str(exc) or type(exc).__name__})
         raise
     finally:
+        render_abort.set()
+        if render_pool is not None:
+            render_pool.shutdown(wait=True, cancel_futures=True)
+            render_pool = None
         record_stage()
         report["elapsed_seconds"] = round(time.monotonic() - start, 2)
         write_json(root / "report.json", report)

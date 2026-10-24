@@ -90,6 +90,22 @@ def test_cancel_terminates_process_and_cleans_ipc(fake_engine, tmp_path, monkeyp
         assert session.directory is None
 
 
+@pytest.mark.parametrize('error_type', [OSError, ValueError, RuntimeError])
+def test_progress_error_terminates_engine_without_status(fake_engine, error_type):
+    processes = []
+
+    with EngineSession() as session:
+        def update(event):
+            processes.append(session.process)
+            raise error_type('background render failed')
+
+        with pytest.raises(error_type, match='background render failed'):
+            fake_engine(session, 'hang', on_update=update)
+        assert processes[0].poll() is not None
+        assert session.process is None
+        assert session.directory is None
+
+
 def test_recycles_at_completed_job_boundary(fake_engine, tmp_path):
     with EngineSession(max_jobs=1) as session:
         fake_engine(session, 'first')
